@@ -48,7 +48,7 @@ pub fn main(_matches: &ArgMatches<'_>) {
 	let mut style = String::new();
 
 	visit_dirs(&project_path.join(INPUT_DIR), &mut |path| {
-		dbg!(&path);
+		eprintln!("info: Processing {}", path.display());
 		match fs::read_to_string(path) {
 			Ok(contents) => {
 				match (

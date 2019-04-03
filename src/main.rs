@@ -46,7 +46,7 @@ fn config_path() -> Option<PathBuf> {
 		if path.exists() {
 			return Some(path);
 		}
-		if !path.pop() {
+		if !path.pop() || !path.pop() {
 			eprintln!("error: Could not find `{}` in `{}` or any parent directory", CONFIG_FILE, current_dir.display());
 			return None;
 		}
