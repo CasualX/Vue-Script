@@ -25,18 +25,31 @@ impl Component {
 	}
 }
 
-fn join_component_path(base_path: &str, relative_path: &str) -> String {
-	if base_path.is_empty() {
-		relative_path.to_string()
+fn join_component_path(base_path: &str, relative_path: &str) -> Option<String> {
+	let mut parts: Vec<&str> = base_path.split('/').filter(|part| !part.is_empty()).collect();
+
+	for part in relative_path.split('/') {
+		match part {
+			"" | "." => (),
+			".." => {
+				if parts.pop().is_none() {
+					return None;
+				}
+			},
+			_ => parts.push(part),
+		}
 	}
-	else {
-		format!("{}/{}", base_path, relative_path)
-	}
+
+	Some(parts.join("/"))
 }
 
-fn warn_invalid_vue_component(component_path: &str, message: &str) -> Option<Component> {
+fn warn_invalid_vue_component<T>(component_path: &str, message: &str) -> Option<T> {
 	eprintln!("warn: Invalid Vue component \"{}\": {}", component_path, message);
 	None
+}
+
+fn warn_ignored_component_link(component_path: &str, rel: &str) {
+	eprintln!("warn: Ignoring link rel=\"{}\" in component \"{}\"; only rel=\"component\" is supported.", rel, component_path);
 }
 
 fn extract_element_inner_text(element: &html_parser::Element) -> Option<String> {
@@ -48,6 +61,59 @@ fn extract_element_inner_text(element: &html_parser::Element) -> Option<String> 
 		}
 	}
 	Some(text)
+}
+
+fn parse_component_link(component_path: &str, component_base_path: &str, element: &html_parser::Element) -> Option<Option<String>> {
+	let rel = element.attributes.get("rel").and_then(|value| value.as_deref()).unwrap_or("");
+	if rel != "component" {
+		warn_ignored_component_link(component_path, rel);
+		return Some(None);
+	}
+
+	let Some(href) = element.attributes.get("href").and_then(|value| value.as_deref()) else {
+		return warn_invalid_vue_component(component_path, "component link href attribute must have a value");
+	};
+
+	let Some(href) = join_component_path(component_base_path, href) else {
+		return warn_invalid_vue_component(component_path, "component link href must not walk above the project root");
+	};
+
+	Some(Some(href))
+}
+
+fn is_import_statement_start(line: &str) -> bool {
+	let Some(suffix) = line.strip_prefix("import") else {
+		return false;
+	};
+
+	match suffix.chars().next() {
+		Some(next) => next.is_ascii_whitespace() || matches!(next, '{' | '*' | '"' | '\''),
+		None => false,
+	}
+}
+
+fn extract_script_imports(contents: &str) -> (Vec<String>, String) {
+	let mut imports = Vec::new();
+	let mut script = String::new();
+
+	for line in contents.split_inclusive('\n') {
+		let trimmed = line.trim_start();
+		if is_import_statement_start(trimmed) {
+			imports.push(format!("{}\n", trimmed.trim_end()));
+		}
+		else {
+			script.push_str(line);
+		}
+	}
+
+	if !contents.ends_with('\n') {
+		let trailing_line = contents.rsplit_once('\n').map_or(contents, |(_, line)| line);
+		if is_import_statement_start(trailing_line.trim_start()) && script.ends_with('\n') {
+			script.pop();
+		}
+	}
+
+	(imports, script)
 }
 
 fn parse_component_vue(component_path: &str, contents: &str) -> Option<Component> {
@@ -77,38 +143,32 @@ fn parse_component_vue(component_path: &str, contents: &str) -> Option<Component
 		match node {
 			html_parser::Node::Element(element) => elements.push(element),
 			html_parser::Node::Text(_) | html_parser::Node::Comment(_) => {
-				return warn_invalid_vue_component(component_path, "top level may only contain script, template or div, and style elements");
+				return warn_invalid_vue_component(component_path, "top level may only contain link, script, template or div, and style elements");
 			},
 		}
 	}
 
 	let mut index = 0;
 
+	while let Some(element) = elements.get(index)
+		&& element.name == "link"
+	{
+		if let Some(use_path) = parse_component_link(component_path, component_base_path, element)? {
+			uses.push(use_path);
+		}
+		index += 1;
+	}
+
 	if let Some(element) = elements.get(index)
 		&& element.name == "script"
 	{
-		for (attribute, value) in &element.attributes {
-			match attribute.as_str() {
-				"use" => {
-					let Some(import_path) = value.as_deref() else {
-						return warn_invalid_vue_component(component_path, "script use attribute must have a value");
-					};
-					uses.push(join_component_path(component_base_path, import_path));
-				},
-				"import" => {
-					let Some(import_statement) = value.as_deref() else {
-						return warn_invalid_vue_component(component_path, "script import attribute must have a value");
-					};
-					imports.push(format!("import {};\n", import_statement));
-				},
-				_ => (),
-			}
-		}
-
-		script = match extract_element_inner_text(element) {
-			Some(script_contents) => Some(script_contents),
+		let script_contents = match extract_element_inner_text(element) {
+			Some(script_contents) => script_contents,
 			None => return warn_invalid_vue_component(component_path, "script tag must have an explicit closing tag"),
 		};
+		let (script_imports, script_contents) = extract_script_imports(&script_contents);
+		imports = script_imports;
+		script = Some(script_contents);
 		index += 1;
 	}
 
@@ -130,14 +190,15 @@ fn parse_component_vue(component_path: &str, contents: &str) -> Option<Component
 	}
 
 	if index != elements.len() {
-		return warn_invalid_vue_component(component_path, "top level must be ordered as optional script, optional template or div, then optional style");
+		return warn_invalid_vue_component(component_path, "top level must be ordered as zero or more link elements, optional script, optional template or div, then optional style");
 	}
 
 	Some(Component { path, uses, imports, template, script, style })
 }
 
 fn parse_component_js(component_path: &str, contents: &str) -> Option<Component> {
-	Some(Component { path: component_path.to_string(), uses: Vec::new(), imports: Vec::new(), template: None, script: Some(contents.to_string()), style: None })
+	let (imports, script) = extract_script_imports(contents);
+	Some(Component { path: component_path.to_string(), uses: Vec::new(), imports, template: None, script: Some(script), style: None })
 }
 
 fn parse_component_css(component_path: &str, contents: &str) -> Option<Component> {

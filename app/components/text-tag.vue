@@ -1,5 +1,6 @@
+<link rel="component" href="script.vue.js">
 
-<script use="script.vue.js">
+<script>
 Vue.component('text-tag', {
 	template: '#text-tag',
 	data() {

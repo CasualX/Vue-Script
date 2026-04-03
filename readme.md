@@ -2,7 +2,7 @@
 
 Vue 2 Bespoke Single File Components (VB.sfc) without the insanity that comes with the NPM ecosystem.
 
-Vue Script is a small build tool for Vue 2 style single file components. It reads a project description from `vue-script.toml`, pulls templates and component imports together, and writes a final HTML file.
+Vue Script is a small build tool for Vue 2 style single file components. It reads a project description from `vue-script.toml`, pulls templates and component dependencies together, extracts top-level `import` lines from script files, and writes a final HTML file.
 
 ## Install
 
@@ -48,6 +48,10 @@ This repo contains a simple example project.
 You will need a [vue-script.toml](vue-script.toml) configuration file. This serves as the entry point for the build process. Run `vue-script` from the directory or a subdirectory where this file is located.
 
 The vue-script.toml declares the location of the target file (the file that will be opened in the browser) and the source files (the .vue/.html/.js files that will be processed). The source files can be located anywhere, but they must be specified relative to the project root.
+
+Vue-Script `.vue` files are HTML fragments with zero or more top-level `<link rel="component" href="...">` elements, an optional `<script>`, an optional `<template>` or `<div>`, and an optional `<style>`. Put one component link at the top level for each child component or helper file dependency.
+
+JavaScript module imports should be written as normal `import ...;` lines inside the `<script>` block or a `.vue.js` helper file. Vue-Script collects lines that start with `import` after trimming leading whitespace and emits them before the remaining script bodies in the final module script.
 
 All paths are relative to the file in which they are written.
 

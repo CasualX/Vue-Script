@@ -1,5 +1,6 @@
+<link rel="component" href="components/text-tag.vue">
 
-<script use="components/text-tag.vue">
+<script>
 new Vue({
 	el: '#app',
 	data: {
