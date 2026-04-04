@@ -1,8 +1,35 @@
 use super::*;
 
+// Keep build fixtures under src/build/tests so they are visible in the repository.
+// Parse-only tests can use include_str!, while filesystem traversal tests should add
+// dedicated fixture files here and resolve them from CARGO_MANIFEST_DIR.
+
 fn parse_component(path: &str, text: &str) -> Option<Component> {
 	let mut log = crate::log::Logger::new();
 	Component::parse(&mut log, path, text)
+}
+
+#[test]
+fn collects_components_in_stable_sorted_order() {
+	let project_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+	let mut log = crate::log::Logger::new();
+	let components = collect_components(
+		&mut log,
+		&project_dir,
+		"src/build/tests/collects_components_in_stable_sorted_order_main.vue",
+	);
+	let paths: Vec<_> = components.iter().map(|component| component.path.as_str()).collect();
+
+	assert_eq!(
+		paths,
+		vec![
+			"src/build/tests/collects_components_in_stable_sorted_order_main.vue",
+			"src/build/tests/collects_components_in_stable_sorted_order_a_first.vue",
+			"src/build/tests/collects_components_in_stable_sorted_order_z_last.vue",
+		]
+	);
+	assert!(log.finished(), "component collection should not emit errors");
 }
 
 #[test]

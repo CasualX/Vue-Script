@@ -1,5 +1,5 @@
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
-use std::collections::HashMap;
 use std::path::Path;
 
 use super::*;
@@ -77,11 +77,11 @@ fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Componen
 		component_path: &str,
 		importer: Option<&'a Component>,
 		collection: &HashMap<&'a str, &'a Component>,
-		visiting: &mut HashMap<&'a str, ()>,
-		visited: &mut HashMap<&'a str, ()>,
+		visiting: &mut HashSet<&'a str>,
+		visited: &mut HashSet<&'a str>,
 		ordered_components: &mut Vec<&'a Component>,
 	) {
-		if visited.contains_key(component_path) {
+		if visited.contains(component_path) {
 			return;
 		}
 
@@ -104,7 +104,7 @@ fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Componen
 			return;
 		};
 
-		if visiting.contains_key(component.path.as_str()) {
+		if visiting.contains(component.path.as_str()) {
 			let (file_contents, span, message) = match importer {
 				Some(importer) => (
 					Some(importer.source.as_str()),
@@ -127,18 +127,18 @@ fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Componen
 			return;
 		}
 
-		visiting.insert(component.path.as_str(), ());
+		visiting.insert(component.path.as_str());
 		for used_path in &component.links {
 			visit(log, used_path, Some(component), collection, visiting, visited, ordered_components);
 		}
 		visiting.remove(component.path.as_str());
-		visited.insert(component.path.as_str(), ());
+		visited.insert(component.path.as_str());
 		ordered_components.push(component);
 	}
 
 	let collection: HashMap<&str, &Component> = components.iter().map(|component| (component.path.as_str(), component)).collect();
-	let mut visiting = HashMap::new();
-	let mut visited = HashMap::new();
+	let mut visiting = HashSet::new();
+	let mut visited = HashSet::new();
 	let mut ordered_components = Vec::new();
 	visit(log, &config.app.main, None, &collection, &mut visiting, &mut visited, &mut ordered_components);
 
@@ -149,6 +149,34 @@ fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Componen
 	let ordered_scripts: Vec<_> = ordered_components.iter().filter_map(|component| component.script.as_deref()).collect();
 
 	format!("<script type=\"module\">\n{}\n{}\n</script>", ordered_imports.join(""), ordered_scripts.join("\n"))
+}
+
+fn collect_components(log: &mut log::Logger, project_path: &Path, main_component_path: &str) -> Vec<Component> {
+	let mut components = Vec::new();
+	let mut visited = HashMap::new();
+	let mut to_visit = BTreeSet::new();
+	to_visit.insert(main_component_path.to_string());
+
+	while let Some(component_path) = to_visit.iter().next().cloned() {
+		to_visit.remove(&component_path);
+		if visited.contains_key(&component_path) {
+			continue;
+		}
+		visited.insert(component_path.clone(), ());
+
+		let component = match read_component(log, project_path, &component_path) {
+			Some(component) => component,
+			None => continue,
+		};
+
+		for import in &component.links {
+			to_visit.insert(import.clone());
+		}
+
+		components.push(component);
+	}
+
+	components
 }
 
 pub fn main(log: &mut log::Logger) {
@@ -166,31 +194,7 @@ pub fn main(log: &mut log::Logger) {
 	};
 
 	let project_path = config.path.parent().unwrap();
-
-	let mut components = Vec::new();
-
-	let mut visited = HashMap::new();
-	let mut to_visit = HashMap::new();
-	to_visit.insert(config.app.main.clone(), ());
-	while !to_visit.is_empty() {
-		let component_path = to_visit.keys().next().unwrap().to_string();
-		to_visit.remove(&component_path);
-		if visited.contains_key(&component_path) {
-			continue;
-		}
-		visited.insert(component_path.clone(), ());
-
-		let component = match read_component(log, project_path, &component_path) {
-			Some(component) => component,
-			None => continue,
-		};
-
-		for import in &component.links {
-			to_visit.insert(import.clone(), ());
-		}
-
-		components.push(component);
-	}
+	let components = collect_components(log, project_path, &config.app.main);
 
 	let scripts = render_scripts(log, config, &components);
 	let styles = render_styles(&components);
