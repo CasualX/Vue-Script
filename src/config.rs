@@ -1,6 +1,8 @@
 use std::{env, io};
 use std::path::PathBuf;
 
+use crate::log;
+
 // Helpers
 
 const CONFIG_FILE: &str = "vue-script.toml";
@@ -24,8 +26,8 @@ fn parse_str(s: &str) -> String {
 	s.trim_matches(|c| c == '"' || c == '\'').to_string()
 }
 
-pub fn load() -> io::Result<Config> {
-	let path = match config_path() {
+pub fn load(log: &mut log::Logger) -> io::Result<Config> {
+	let path = match config_path(log) {
 		Some(path) => path,
 		None => return Err(io::Error::new(io::ErrorKind::NotFound, "Configuration file not found")),
 	};
@@ -39,7 +41,18 @@ pub fn load() -> io::Result<Config> {
 		path: None,
 	};
 
-	let contents = std::fs::read_to_string(&path)?;
+	let contents = match std::fs::read_to_string(&path) {
+		Ok(contents) => contents,
+		Err(err) => {
+			log.log(None, log::LogEntry {
+				level: log::LogLevel::Error,
+				span: None,
+				message: format!("Failed to read config \"{}\": {}", path.display(), err),
+				note: Some("Check that vue-script.toml exists and is readable."),
+			});
+			return Err(err);
+		}
+	};
 	let mut current_section = None;
 
 	for line in ini_core::Parser::new(&contents).auto_trim(true) {
@@ -47,7 +60,12 @@ pub fn load() -> io::Result<Config> {
 			ini_core::Item::Section(section) => {
 				current_section = Some(section);
 				if section != "app" && section != "target" {
-					eprintln!("warn: Unknown config section: [{}]", section);
+					log.log(None, log::LogEntry {
+						level: log::LogLevel::Warn,
+						span: None,
+						message: format!("Unknown config section [{}].", section),
+						note: Some("Remove the section or rename it to a supported section."),
+					});
 				}
 			}
 			ini_core::Item::Property(key, Some(value)) => {
@@ -55,11 +73,21 @@ pub fn load() -> io::Result<Config> {
 					Some("app") => match key {
 						"page" => app.page = parse_str(&value),
 						"main" => app.main = parse_str(&value),
-						_ => eprintln!("warn: Unknown config key in [app]: {}", key),
+						_ => log.log(None, log::LogEntry {
+							level: log::LogLevel::Warn,
+							span: None,
+							message: format!("Unknown config key [{}].{}.", "app", key),
+							note: Some("Remove the key or rename it to a supported setting."),
+						}),
 					}
 					Some("target") => match key {
 						"path" => target.path = Some(parse_str(&value)),
-						_ => eprintln!("warn: Unknown config key in [target]: {}", key),
+						_ => log.log(None, log::LogEntry {
+							level: log::LogLevel::Warn,
+							span: None,
+							message: format!("Unknown config key [{}].{}.", "target", key),
+							note: Some("Remove the key or rename it to a supported setting."),
+						}),
 					}
 					_ => (),
 				}
@@ -72,13 +100,17 @@ pub fn load() -> io::Result<Config> {
 	Ok(Config { path, app, target })
 }
 
-fn config_path() -> Option<PathBuf> {
+fn config_path(log: &mut log::Logger) -> Option<PathBuf> {
 	let current_dir = match env::current_dir() {
 		Ok(path) => path,
 		Err(err) => {
-			eprintln!("warn: Current directory not available: {}", err);
-			eprintln!("warn: Falling back to the executable path");
-			env::args_os().next().unwrap().into()
+			log.log(None, log::LogEntry {
+				level: log::LogLevel::Error,
+				span: None,
+				message: format!("Current working directory is unavailable: {}", err),
+				note: Some("Run vue-script from inside the project directory when possible."),
+			});
+			return None;
 		},
 	};
 
@@ -89,7 +121,12 @@ fn config_path() -> Option<PathBuf> {
 			return Some(path);
 		}
 		if !path.pop() || !path.pop() {
-			eprintln!("error: Could not find `{}` in `{}` or any parent directory", CONFIG_FILE, current_dir.display());
+			log.log(None, log::LogEntry {
+				level: log::LogLevel::Error,
+				span: None,
+				message: format!("Could not find {} in {} or any parent directory.", CONFIG_FILE, current_dir.display()),
+				note: Some("Create vue-script.toml in the project root or run the command from inside the project."),
+			});
 			return None;
 		}
 	}

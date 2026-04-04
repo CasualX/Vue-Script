@@ -3,7 +3,7 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
-use crate::config;
+use super::*;
 
 fn target(target: &OsStr) -> io::Result<()> {
 	#[cfg(target_os = "windows")]
@@ -68,14 +68,24 @@ pub fn url(url: &str) -> io::Result<()> {
 	target(OsStr::new(url))
 }
 
-pub fn main(config: &config::Config) {
+pub fn main(log: &mut log::Logger, config: &Config) {
 	// Open the target file in the browser (no serve, just open the file:// URL)
 	match config::target_full_path(config) {
 		Some(target_full_path) => {
 			if let Err(err) = path(&target_full_path) {
-				eprintln!("Error opening file \"{}\": {}", target_full_path.display(), err);
+				log.log(None, log::LogEntry {
+					level: log::LogLevel::Error,
+					span: None,
+					message: format!("Failed to open generated target \"{}\" in a browser: {}", target_full_path.display(), err),
+					note: Some("Open the generated file manually or configure a compatible opener on this system."),
+				});
 			}
 		},
-		None => eprintln!("Error: No target path specified in config"),
+		None => log.log(None, log::LogEntry {
+			level: log::LogLevel::Error,
+			span: None,
+			message: "No target output path is configured.".to_string(),
+			note: Some("Set [target].path in vue-script.toml before using the open command."),
+		}),
 	}
 }

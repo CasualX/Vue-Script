@@ -2,11 +2,14 @@ mod build;
 mod config;
 mod open;
 mod serve;
+mod log;
 
-fn with_config(action: impl FnOnce(&config::Config)) {
-	match config::load() {
-		Ok(config) => action(&config),
-		Err(e) => eprintln!("Error loading config: {}", e),
+use config::Config;
+
+fn with_config(log: &mut log::Logger, action: impl FnOnce(&mut log::Logger, &Config)) {
+	match config::load(log) {
+		Ok(config) => action(log, &config),
+		Err(_) => (),
 	}
 }
 
@@ -19,7 +22,7 @@ fn main() {
 			.about("Compiles the Vue Single File Components for distribution")
 		)
 		.subcommand(clap::Command::new("open")
-			.about("Opens the html in a local browser")
+			.about("Opens the HTML file in a local browser")
 		)
 		.subcommand(clap::Command::new("serve")
 			.about("Serves the project and opens the target in a local browser")
@@ -31,24 +34,37 @@ fn main() {
 		);
 	let matches = app.get_matches();
 
-	match matches.subcommand() {
+
+	let success = match matches.subcommand() {
 		Some(("build", _build_matches)) => {
-			with_config(|config| build::main(config));
+			let mut log = log::Logger::new();
+			with_config(&mut log, |log, config| build::main(log, config));
+			log.finished()
 		},
 		Some(("open", _open_matches)) => {
-			with_config(|config| {
-				build::main(config);
-				open::main(config);
+			let mut log = log::Logger::new();
+			with_config(&mut log, |log, config| {
+				build::main(log, config);
+				open::main(log, config);
 			});
+			log.finished()
 		},
 		Some(("serve", serve_matches)) => {
-			with_config(|config| {
-				build::main(config);
+			let mut log = log::Logger::new();
+			with_config(&mut log, |log, config| {
+				build::main(log, config);
 				let detached = serve_matches.get_flag("detached");
-				serve::main(config, detached);
+				serve::main(log, config, detached);
 			});
+			log.finished()
 		},
 		Some((command, _)) => unreachable!("Unknown command: {}", command),
-		None => println!("Welcome!"),
-	}
+		None => {
+			println!("Welcome!");
+			std::process::exit(0);
+		},
+	};
+
+	let code = if success { 0 } else { 1 };
+	std::process::exit(code)
 }

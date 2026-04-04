@@ -1,27 +1,61 @@
 use super::*;
 
+fn parse_component(path: &str, text: &str) -> Option<Component> {
+	let mut log = crate::log::Logger::new();
+	Component::parse(&mut log, path, text)
+}
+
+#[test]
+fn build_reports_cycle_and_missing_import_without_filesystem() {
+	let main_component = parse_component(
+		"src/build/tests/build_reports_cycle_and_missing_import_main.vue",
+		include_str!("tests/build_reports_cycle_and_missing_import_main.vue"),
+	)
+	.expect("main component should parse");
+	let child_component = parse_component(
+		"src/build/tests/build_reports_cycle_and_missing_import_child.vue",
+		include_str!("tests/build_reports_cycle_and_missing_import_child.vue"),
+	)
+	.expect("child component should parse");
+	let config = crate::Config {
+		path: std::path::PathBuf::from("vue-script.toml"),
+		app: crate::config::ConfigApp {
+			page: "app/page.html".to_string(),
+			main: "src/build/tests/build_reports_cycle_and_missing_import_main.vue".to_string(),
+		},
+		target: crate::config::ConfigTarget {
+			path: None,
+		},
+	};
+	let mut log = crate::log::Logger::new();
+	let output = render_scripts(&mut log, &config, &[main_component, child_component]);
+
+	assert!(!output.is_empty(), "rendered script output should still be produced for inspection");
+	assert!(!log.finished(), "cycles and missing imports should be reported as errors");
+}
+
+#[test]
+fn build_reports_missing_page_placeholders_without_filesystem() {
+	let page = "<html>\n<head></head>\n<body>\n<div>No placeholders here</div>\n</body>\n</html>\n";
+	let mut log = crate::log::Logger::new();
+	let with_scripts = replace(&mut log, "app/page.html", page, "<!-- SCRIPTS -->", "<script />");
+	let with_styles = replace(&mut log, "app/page.html", &with_scripts, "<!-- STYLES -->", "<style />");
+	let with_templates = replace(&mut log, "app/page.html", &with_styles, "<!-- TEMPLATES -->", "<div />");
+
+	assert_eq!(with_templates, page, "page contents should be unchanged when placeholders are missing");
+	assert!(!log.finished(), "missing placeholders should be reported as errors");
+}
+
 #[test]
 fn parses_valid_vue_fragment() {
-	let component = Component::parse(
-		"app/main.vue",
-		r#"
-<link rel="component" href="components/child.vue">
-<script>
-	import { createApp } from 'vue';
-console.log("ok");
-</script>
-<template>
-<div>Hello</div>
-</template>
-<style>
-div { color: red; }
-</style>
-"#,
+	let component = parse_component(
+		"src/build/tests/parses_valid_vue_fragment.vue",
+		include_str!("tests/parses_valid_vue_fragment.vue"),
 	)
 	.expect("component should parse");
 
-	assert_eq!(component.path, "app/main.vue");
-	assert_eq!(component.uses, vec!["app/components/child.vue"]);
+	assert_eq!(component.path, "src/build/tests/parses_valid_vue_fragment.vue");
+	assert_eq!(component.links, vec!["src/build/tests/components/child.vue"]);
 	assert_eq!(component.imports, vec!["import { createApp } from 'vue';\n"]);
 	assert!(component.script.as_deref().unwrap().contains("console.log"));
 	assert!(!component.script.as_deref().unwrap().contains("import { createApp } from 'vue';"));
@@ -32,98 +66,60 @@ div { color: red; }
 
 #[test]
 fn normalizes_component_use_paths() {
-	let component = Component::parse(
-		"app/components/main.vue",
-		r#"
-<link rel="component" href="../shared/../child.vue">
-<script>
-console.log("ok");
-</script>
-<div></div>
-"#,
+	let component = parse_component(
+		"src/build/tests/normalizes_component_use_paths.vue",
+		include_str!("tests/normalizes_component_use_paths.vue"),
 	)
 	.expect("component should parse");
 
-	assert_eq!(component.uses, vec!["app/child.vue"]);
+	assert_eq!(component.links, vec!["src/build/child.vue"]);
 }
 
 #[test]
 fn extracts_multiple_import_lines_from_script_contents() {
-	let component = Component::parse(
-		"app/main.vue",
-		r#"
-<link rel="component" href="components/child.vue">
-<link rel="component" href="components/sibling.vue">
-<script>
-	import { createApp } from 'vue';
-	import helper from './helper.js';
-console.log("ok");
-</script>
-<div></div>
-"#,
+	let component = parse_component(
+		"src/build/tests/extracts_multiple_import_lines_from_script_contents.vue",
+		include_str!("tests/extracts_multiple_import_lines_from_script_contents.vue"),
 	)
 	.expect("component should parse");
 
-	assert_eq!(component.uses, vec!["app/components/child.vue", "app/components/sibling.vue"]);
+	assert_eq!(component.links, vec!["src/build/tests/components/child.vue", "src/build/tests/components/sibling.vue"]);
 	assert_eq!(component.imports, vec!["import { createApp } from 'vue';\n", "import helper from './helper.js';\n"]);
 	assert_eq!(component.script.as_deref().unwrap().trim(), "console.log(\"ok\");");
 }
 
 #[test]
 fn rejects_component_use_paths_above_root() {
-	assert!(Component::parse(
-		"main.vue",
-		r#"
-<link rel="component" href="../child.vue">
-<script>
-console.log("ok");
-</script>
-<div></div>
-"#,
+	assert!(parse_component(
+		"src/build/tests/rejects_component_use_paths_above_root.vue",
+		include_str!("tests/rejects_component_use_paths_above_root.vue"),
 	)
 	.is_none());
 }
 
 #[test]
-fn ignores_non_component_links() {
-	let component = Component::parse(
-		"app/main.vue",
-		r#"
-<link rel="stylesheet" href="ignored.css">
-<link rel="component" href="components/child.vue">
-<script>
-	console.log("ok");
-</script>
-<div></div>
-"#,
+fn rejects_non_component_links() {
+	assert!(parse_component(
+		"src/build/tests/ignores_non_component_links.vue",
+		include_str!("tests/ignores_non_component_links.vue"),
 	)
-	.expect("component should parse");
-
-	assert_eq!(component.uses, vec!["app/components/child.vue"]);
+	.is_none());
 }
 
 #[test]
 fn rejects_component_links_without_href() {
-	assert!(Component::parse(
-		"app/main.vue",
-		r#"
-<link rel="component">
-<script>
-	console.log("ok");
-</script>
-<div></div>
-"#,
+	assert!(parse_component(
+		"src/build/tests/rejects_component_links_without_href.vue",
+		include_str!("tests/rejects_component_links_without_href.vue"),
 	)
 	.is_none());
 }
 
 #[test]
 fn extracts_import_lines_from_vue_js_helpers() {
-	let component = Component::parse(
-		"app/helpers/example.vue.js",
-		r#"import helper from './helper.js';
-const answer = 42;
-"#,
+	let component = parse_component(
+		"src/build/tests/extracts_import_lines_from_vue_js_helpers.vue.js",
+		include_str!("tests/extracts_import_lines_from_vue_js_helpers.vue.js"),
 	)
 	.expect("helper should parse");
 
@@ -133,13 +129,9 @@ const answer = 42;
 
 #[test]
 fn ignores_non_statement_import_prefixes() {
-	let component = Component::parse(
-		"app/helpers/example.vue.js",
-		r#"importedAt = Date.now();
-import.meta.env;
-const value = import('helper');
-import{ named } from './helper.js';
-"#,
+	let component = parse_component(
+		"src/build/tests/ignores_non_statement_import_prefixes.vue.js",
+		include_str!("tests/ignores_non_statement_import_prefixes.vue.js"),
 	)
 	.expect("helper should parse");
 
@@ -151,40 +143,27 @@ import{ named } from './helper.js';
 
 #[test]
 fn rejects_multiple_script_tags() {
-	assert!(Component::parse(
-		"app/main.vue",
-		r#"
-<script>one</script>
-<script>two</script>
-"#,
+	assert!(parse_component(
+		"src/build/tests/rejects_multiple_script_tags.vue",
+		include_str!("tests/rejects_multiple_script_tags.vue"),
 	)
 	.is_none());
 }
 
 #[test]
 fn rejects_template_and_div_together() {
-	assert!(Component::parse(
-		"app/main.vue",
-		r#"
-<template><span /></template>
-<div></div>
-"#,
+	assert!(parse_component(
+		"src/build/tests/rejects_template_and_div_together.vue",
+		include_str!("tests/rejects_template_and_div_together.vue"),
 	)
 	.is_none());
 }
 
 #[test]
 fn rejects_full_document() {
-	assert!(Component::parse(
-		"app/main.vue",
-		r#"
-<!doctype html>
-<html>
-<body>
-	<div></div>
-</body>
-</html>
-"#,
+	assert!(parse_component(
+		"src/build/tests/rejects_full_document.vue",
+		include_str!("tests/rejects_full_document.vue"),
 	)
 	.is_none());
 }
@@ -194,7 +173,8 @@ fn renders_styles_in_single_tag() {
 	let components = vec![
 		Component {
 			path: "app/one.vue".to_string(),
-			uses: Vec::new(),
+			source: String::new(),
+			links: Vec::new(),
 			imports: Vec::new(),
 			template: None,
 			script: None,
@@ -202,7 +182,8 @@ fn renders_styles_in_single_tag() {
 		},
 		Component {
 			path: "app/two.vue.css".to_string(),
-			uses: Vec::new(),
+			source: String::new(),
+			links: Vec::new(),
 			imports: Vec::new(),
 			template: None,
 			script: None,

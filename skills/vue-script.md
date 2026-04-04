@@ -203,9 +203,9 @@ Use component links for:
 
 Treat the dependency graph as a directed acyclic graph. The builder orders scripts by walking dependencies first, so circular dependency chains break the intended ordering and produce warnings.
 
-### `import` lines in script contents
+### `import` lines in script source
 
-Use normal JavaScript `import` lines directly inside `.vue` `<script>` blocks or `.vue.js` helper files when you need external module imports emitted into the final module script.
+Use normal JavaScript `import` lines directly inside `.vue` `<script>` blocks or `.vue.js` helper files when you need external module imports.
 
 Example:
 

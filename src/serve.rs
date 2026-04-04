@@ -1,4 +1,4 @@
-use crate::{config, open};
+use super::*;
 
 use std::io;
 use std::path::Path;
@@ -8,8 +8,8 @@ use std::time::Duration;
 
 const SERVER_PORT: u16 = 8000;
 
-fn target_url(config: &config::Config) -> io::Result<String> {
-	let target_path = config.target.path.as_ref().ok_or_else(|| io::Error::other("No target path specified in config"))?;
+fn target_url(config: &Config) -> io::Result<String> {
+	let target_path = config.target.path.as_ref().ok_or_else(|| io::Error::other("No target output path is configured"))?;
 	let path = Path::new(target_path)
 		.iter()
 		.map(|component| component.to_string_lossy())
@@ -36,14 +36,19 @@ fn spawn_server(root: &Path) -> io::Result<Child> {
 	Err(io::Error::new(io::ErrorKind::NotFound, "No supported Python interpreter found"))
 }
 
-pub fn run(config: &config::Config, detached: bool) -> io::Result<()> {
+pub fn run(log: &mut log::Logger, config: &Config, detached: bool) -> io::Result<()> {
 	let root = config.path.parent().ok_or_else(|| io::Error::other("Configuration file parent directory not found"))?;
 	let target_url = target_url(config)?;
 	let mut server = spawn_server(root)?;
 
 	thread::sleep(Duration::from_millis(250));
 	if let Err(err) = open::url(&target_url) {
-		eprintln!("Error opening URL \"{}\": {}", target_url, err);
+		log.log(None, log::LogEntry {
+			level: log::LogLevel::Warn,
+			span: None,
+			message: format!("Development server started, but opening \"{}\" in a browser failed: {}", target_url, err),
+			note: Some("Open the URL manually in a browser."),
+		});
 	}
 
 	if detached {
@@ -59,8 +64,13 @@ pub fn run(config: &config::Config, detached: bool) -> io::Result<()> {
 	Ok(())
 }
 
-pub fn main(config: &config::Config, detached: bool) {
-	if let Err(err) = run(config, detached) {
-		eprintln!("Error running server: {}", err);
+pub fn main(log: &mut log::Logger, config: &Config, detached: bool) {
+	if let Err(err) = run(log, config, detached) {
+		log.log(None, log::LogEntry {
+			level: log::LogLevel::Error,
+			span: None,
+			message: format!("Failed to start the development server: {}", err),
+			note: Some("Ensure Python is installed, [target].path is configured, and the project directory is accessible."),
+		});
 	}
 }
