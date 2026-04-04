@@ -68,7 +68,20 @@ pub fn url(url: &str) -> io::Result<()> {
 	target(OsStr::new(url))
 }
 
-pub fn main(log: &mut log::Logger, config: &Config) {
+pub fn main(log: &mut log::Logger) {
+	let ref config = match Config::load(log) {
+		Ok(config) => config,
+		Err(err) => {
+			log.log(None, log::LogEntry {
+				level: log::LogLevel::Error,
+				span: None,
+				message: format!("Failed to load configuration: {}", err),
+				note: Some("Check that the configuration file exists and is valid TOML."),
+			});
+			return;
+		},
+	};
+
 	// Open the target file in the browser (no serve, just open the file:// URL)
 	match config::target_full_path(config) {
 		Some(target_full_path) => {

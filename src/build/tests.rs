@@ -26,6 +26,7 @@ fn build_reports_cycle_and_missing_import_without_filesystem() {
 		target: crate::config::ConfigTarget {
 			path: None,
 		},
+		serve: crate::config::ConfigServe::default(),
 	};
 	let mut log = crate::log::Logger::new();
 	let output = render_scripts(&mut log, &config, &[main_component, child_component]);

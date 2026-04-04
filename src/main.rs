@@ -6,13 +6,6 @@ mod log;
 
 use config::Config;
 
-fn with_config(log: &mut log::Logger, action: impl FnOnce(&mut log::Logger, &Config)) {
-	match config::load(log) {
-		Ok(config) => action(log, &config),
-		Err(_) => (),
-	}
-}
-
 fn main() {
 	let app = clap::Command::new("Vue Script")
 		.version(clap::crate_version!())
@@ -26,6 +19,13 @@ fn main() {
 		)
 		.subcommand(clap::Command::new("serve")
 			.about("Serves the project and opens the target in a local browser")
+			.arg(clap::Arg::new("port")
+				.long("port")
+				.value_name("PORT")
+				.value_parser(clap::value_parser!(u16))
+				.default_value("8000")
+				.help("Port for the Python HTTP server")
+			)
 			.arg(clap::Arg::new("detached")
 				.long("detached")
 				.action(clap::ArgAction::SetTrue)
@@ -36,26 +36,23 @@ fn main() {
 
 
 	let success = match matches.subcommand() {
-		Some(("build", _build_matches)) => {
+		Some(("build", _matches)) => {
 			let mut log = log::Logger::new();
-			with_config(&mut log, |log, config| build::main(log, config));
+			build::main(&mut log);
 			log.finished()
 		},
-		Some(("open", _open_matches)) => {
+		Some(("open", _matches)) => {
 			let mut log = log::Logger::new();
-			with_config(&mut log, |log, config| {
-				build::main(log, config);
-				open::main(log, config);
-			});
+			build::main(&mut log);
+			open::main(&mut log);
 			log.finished()
 		},
-		Some(("serve", serve_matches)) => {
+		Some(("serve", matches)) => {
 			let mut log = log::Logger::new();
-			with_config(&mut log, |log, config| {
-				build::main(log, config);
-				let detached = serve_matches.get_flag("detached");
-				serve::main(log, config, detached);
-			});
+			build::main(&mut log);
+			let detached = matches.get_flag("detached");
+			let port = *matches.get_one::<u16>("port").expect("serve port should have a default value");
+			serve::main(&mut log, detached, port);
 			log.finished()
 		},
 		Some((command, _)) => unreachable!("Unknown command: {}", command),

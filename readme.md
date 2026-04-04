@@ -36,10 +36,11 @@ vue-script open
 Build, start a Python HTTP server from the project root, and open the configured target URL (requires Python to be installed and available in PATH):
 
 ```bash
-vue-script serve
+vue-script serve --port 8123
 ```
 
 Run this in a separate terminal as it will block the current terminal.
+In blocking mode, `serve` also watches the configured `[serve].watch` globs and rebuilds when matching files change. The default port is 8000 if not specified.
 
 ## Usage
 
@@ -48,6 +49,17 @@ This repo contains a simple example project.
 You will need a [vue-script.toml](vue-script.toml) configuration file. This serves as the entry point for the build process. Run `vue-script` from the directory or a subdirectory where this file is located.
 
 The vue-script.toml declares the location of the target file (the file that will be opened in the browser) and the source files (the .vue/.html/.js files that will be processed). The source files can be located anywhere, but they must be specified relative to the project root.
+
+When using `serve`, you can provide repeated `watch = "..."` entries under `[serve]` to define which project-relative paths should trigger rebuilds. These entries use glob syntax.
+
+```toml
+[serve]
+watch = "app/**/*"
+```
+
+The configured `[target].path` is always ignored implicitly so writes to the generated output do not trigger rebuild loops.
+
+The project configuration file `vue-script.toml` is also watched implicitly so configuration edits trigger a debounced rebuild when file watching is enabled.
 
 Vue-Script `.vue` files are HTML fragments with zero or more top-level `<link rel="component" href="...">` elements, an optional `<script>`, an optional `<template>` or `<div>`, and an optional `<style>`. Put one component link at the top level for each child component or helper file dependency.
 

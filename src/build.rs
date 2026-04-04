@@ -151,7 +151,20 @@ fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Componen
 	format!("<script type=\"module\">\n{}\n{}\n</script>", ordered_imports.join(""), ordered_scripts.join("\n"))
 }
 
-pub fn main(log: &mut log::Logger, config: &Config) {
+pub fn main(log: &mut log::Logger) {
+	let ref config = match Config::load(log) {
+		Ok(config) => config,
+		Err(err) => {
+			log.log(None, log::LogEntry {
+				level: log::LogLevel::Error,
+				span: None,
+				message: format!("Failed to load configuration: {}", err),
+				note: Some("Check that the configuration file exists and is valid TOML."),
+			});
+			return;
+		},
+	};
+
 	let project_path = config.path.parent().unwrap();
 
 	let mut components = Vec::new();

@@ -4,3 +4,6 @@ main = "app/main.vue"
 
 [target]
 path = "target/index.html"
+
+[serve]
+watch = "app/**/*"
