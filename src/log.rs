@@ -1,5 +1,4 @@
 use std::io::{self, IsTerminal, Write};
-use std::ops;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum LogLevel {
@@ -25,11 +24,14 @@ impl LogLevel {
 		}
 	}
 }
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LineSpan<'a> {
 	pub file: &'a str,
-	pub line: usize,
-	pub span: ops::Range<usize>,
+	pub line_start: usize,
+	pub line_end: usize,
+	pub column_start: usize,
+	pub column_end: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -85,7 +87,7 @@ impl Logger {
 }
 
 fn get_source_line<'a>(source: Option<&'a str>, span: &LineSpan) -> Option<&'a str> {
-	source.and_then(|source| source.lines().nth(span.line.saturating_sub(1)))
+	source.and_then(|source| source.lines().nth(span.line_start.saturating_sub(1)))
 }
 
 fn write_plain_entry(mut writer: impl Write, source: Option<&str>, entry: &LogEntry<'_>) {
@@ -95,14 +97,14 @@ fn write_plain_entry(mut writer: impl Write, source: Option<&str>, entry: &LogEn
 
 	if let Some(span) = &entry.span {
 		let span_file = span.file;
-		let span_line = span.line;
-		let location_column = span.span.start.saturating_add(1);
+		let span_line = span.line_start;
+		let location_column = span.column_start.saturating_add(1);
 		let _ = writeln!(writer, " --> {span_file}:{span_line}:{location_column}");
 
 		if let Some(source_line) = get_source_line(source, span) {
 			let gutter_width = span_line.to_string().len();
-			let caret_padding = span.span.start;
-			let caret_count = usize::max(1, span.span.end.saturating_sub(span.span.start));
+			let caret_padding = span.column_start;
+			let caret_count = usize::max(1, span.column_end.saturating_sub(span.column_start));
 			let blank = "";
 
 			let _ = writeln!(writer, "{0:>gutter_width$} |", blank);
@@ -124,17 +126,17 @@ fn write_colored_entry(mut writer: impl Write, source: Option<&str>, entry: &Log
 
 	if let Some(span) = &entry.span {
 		let span_file = span.file;
-		let span_line = span.line;
-		let location_column = span.span.start.saturating_add(1);
-		let _ = writeln!(writer, " \x1b[1;34m-->\x1b[0m {span_file}:{span_line}:{location_column}");
+		let span_line_start = span.line_start;
+		let span_column_start = span.column_start;
+		let _ = writeln!(writer, " \x1b[1;34m-->\x1b[0m {span_file}:{span_line_start}:{span_column_start}");
 
 		if let Some(source_line) = get_source_line(source, span) {
-			let gutter_width = span_line.to_string().len();
-			let caret_padding = span.span.start;
-			let caret_count = usize::max(1, span.span.end.saturating_sub(span.span.start));
+			let gutter_width = span_line_start.to_string().len();
+			let caret_padding = span.column_start;
+			let caret_count = usize::max(1, span.column_end.saturating_sub(span.column_start));
 
 			let _ = writeln!(writer, " \x1b[2;34m{0:>gutter_width$} |\x1b[0m", "");
-			let _ = writeln!(writer, " \x1b[1;34m{span_line:>gutter_width$}\x1b[0m \x1b[2;34m|\x1b[0m {source_line}");
+			let _ = writeln!(writer, " \x1b[1;34m{span_line_start:>gutter_width$}\x1b[0m \x1b[2;34m|\x1b[0m {source_line}");
 			let _ = writeln!(writer, " \x1b[2;34m{0:>gutter_width$} |\x1b[0m {0:>caret_padding$}\x1b[{level_color}m{0:^>caret_count$}\x1b[0m", "");
 		}
 	}

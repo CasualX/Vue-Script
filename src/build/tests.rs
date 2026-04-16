@@ -4,11 +4,6 @@ use super::*;
 // Parse-only tests can use include_str!, while filesystem traversal tests should add
 // dedicated fixture files here and resolve them from CARGO_MANIFEST_DIR.
 
-fn parse_component(path: &str, text: &str) -> Option<Component> {
-	let mut log = crate::log::Logger::new();
-	Component::parse(&mut log, path, text)
-}
-
 #[test]
 fn collects_components_in_stable_sorted_order() {
 	let project_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -34,16 +29,15 @@ fn collects_components_in_stable_sorted_order() {
 
 #[test]
 fn build_reports_cycle_and_missing_import_without_filesystem() {
-	let main_component = parse_component(
+	let mut log = crate::log::Logger::new();
+	let main_component = Component::parse(&mut log,
 		"src/build/tests/build_reports_cycle_and_missing_import_main.vue",
 		include_str!("tests/build_reports_cycle_and_missing_import_main.vue"),
-	)
-	.expect("main component should parse");
-	let child_component = parse_component(
+	).unwrap();
+	let child_component = Component::parse(&mut log,
 		"src/build/tests/build_reports_cycle_and_missing_import_child.vue",
 		include_str!("tests/build_reports_cycle_and_missing_import_child.vue"),
-	)
-	.expect("child component should parse");
+	).unwrap();
 	let config = crate::Config {
 		path: std::path::PathBuf::from("vue-script.toml"),
 		app: crate::config::ConfigApp {
@@ -76,11 +70,11 @@ fn build_reports_missing_page_placeholders_without_filesystem() {
 
 #[test]
 fn parses_valid_vue_fragment() {
-	let component = parse_component(
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
 		"src/build/tests/parses_valid_vue_fragment.vue",
 		include_str!("tests/parses_valid_vue_fragment.vue"),
-	)
-	.expect("component should parse");
+	).unwrap();
 
 	assert_eq!(component.path, "src/build/tests/parses_valid_vue_fragment.vue");
 	assert_eq!(component.links, vec!["src/build/tests/components/child.vue"]);
@@ -93,23 +87,64 @@ fn parses_valid_vue_fragment() {
 }
 
 #[test]
+fn allows_top_level_comments_and_whitespace() {
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
+		"src/build/tests/allows_top_level_comments_and_whitespace.vue",
+		"\n<!-- leading comment -->\n<link rel=\"component\" href=\"components/child.vue\">\n<!-- between blocks -->\n<script>\nimport helper from './helper.js';\nconsole.log(helper);\n</script>\n\n<template><div>Hello</div></template>\n<!-- trailing comment -->\n<style>\ndiv { color: red; }\n</style>\n",
+	).unwrap();
+
+	assert_eq!(component.links, vec!["src/build/tests/components/child.vue"]);
+	assert_eq!(component.imports, vec!["import helper from './helper.js';\n"]);
+	assert!(component.script.as_deref().unwrap().contains("console.log(helper);"));
+	assert_eq!(component.template.as_deref(), Some("<template><div>Hello</div></template>"));
+	assert!(component.style.as_deref().unwrap().contains("div { color: red; }"));
+}
+
+#[test]
+fn rejects_non_whitespace_top_level_text() {
+	let mut log = crate::log::Logger::new();
+	Component::parse(&mut log,
+		"src/build/tests/rejects_non_whitespace_top_level_text.vue",
+		"hello\n<template><div>Hello</div></template>\n",
+	);
+	assert!(!log.finished(), "non-whitespace top level text should be reported as an error");
+}
+
+#[test]
+fn parses_vue_shorthand_attributes_in_template_roots() {
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
+		"src/build/tests/parses_vue_shorthand_attributes_in_template_roots.vue",
+		"<script>\nconsole.log('ok');\n</script>\n<div id=\"app\" class=\"app-main\" @drop=\"dropFile\" @dragenter=\"\">\n\t<app-viewer v-if=\"reader != null\" :reader=\"reader\" @set-status=\"setStatusLine\"></app-viewer>\n\t<div class=\"footer\">{{ status }}</div>\n</div>\n<style>\n.app-main { color: red; }\n</style>\n",
+	).unwrap();
+
+	let template = component.template.as_deref().expect("template should be present");
+	assert!(template.contains("@drop=\"dropFile\""));
+	assert!(template.contains("@dragenter=\"\""));
+	assert!(template.contains(":reader=\"reader\""));
+	assert!(template.contains("@set-status=\"setStatusLine\""));
+	assert!(template.contains("<app-viewer"));
+}
+
+#[test]
 fn normalizes_component_use_paths() {
-	let component = parse_component(
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
 		"src/build/tests/normalizes_component_use_paths.vue",
 		include_str!("tests/normalizes_component_use_paths.vue"),
-	)
-	.expect("component should parse");
+	).unwrap();
 
 	assert_eq!(component.links, vec!["src/build/child.vue"]);
 }
 
 #[test]
 fn extracts_multiple_import_lines_from_script_contents() {
-	let component = parse_component(
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
 		"src/build/tests/extracts_multiple_import_lines_from_script_contents.vue",
 		include_str!("tests/extracts_multiple_import_lines_from_script_contents.vue"),
-	)
-	.expect("component should parse");
+	).unwrap();
 
 	assert_eq!(component.links, vec!["src/build/tests/components/child.vue", "src/build/tests/components/sibling.vue"]);
 	assert_eq!(component.imports, vec!["import { createApp } from 'vue';\n", "import helper from './helper.js';\n"]);
@@ -118,38 +153,41 @@ fn extracts_multiple_import_lines_from_script_contents() {
 
 #[test]
 fn rejects_component_use_paths_above_root() {
-	assert!(parse_component(
+	let mut log = crate::log::Logger::new();
+	let _component = Component::parse(&mut log,
 		"src/build/tests/rejects_component_use_paths_above_root.vue",
 		include_str!("tests/rejects_component_use_paths_above_root.vue"),
-	)
-	.is_none());
+	).unwrap();
+	assert!(!log.finished(), "component use paths above root should be reported as an error");
 }
 
 #[test]
 fn rejects_non_component_links() {
-	assert!(parse_component(
+	let mut log = crate::log::Logger::new();
+	let _component = Component::parse(&mut log,
 		"src/build/tests/ignores_non_component_links.vue",
 		include_str!("tests/ignores_non_component_links.vue"),
-	)
-	.is_none());
+	).unwrap();
+	assert!(!log.finished(), "non-component links should be reported as an error");
 }
 
 #[test]
 fn rejects_component_links_without_href() {
-	assert!(parse_component(
+	let mut log = crate::log::Logger::new();
+	let _component = Component::parse(&mut log,
 		"src/build/tests/rejects_component_links_without_href.vue",
 		include_str!("tests/rejects_component_links_without_href.vue"),
-	)
-	.is_none());
+	).unwrap();
+	assert!(!log.finished(), "component links without href should be reported as an error");
 }
 
 #[test]
 fn extracts_import_lines_from_vue_js_helpers() {
-	let component = parse_component(
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
 		"src/build/tests/extracts_import_lines_from_vue_js_helpers.vue.js",
 		include_str!("tests/extracts_import_lines_from_vue_js_helpers.vue.js"),
-	)
-	.expect("helper should parse");
+	).unwrap();
 
 	assert_eq!(component.imports, vec!["import helper from './helper.js';\n"]);
 	assert_eq!(component.script.as_deref().unwrap().trim(), "const answer = 42;");
@@ -157,11 +195,11 @@ fn extracts_import_lines_from_vue_js_helpers() {
 
 #[test]
 fn ignores_non_statement_import_prefixes() {
-	let component = parse_component(
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
 		"src/build/tests/ignores_non_statement_import_prefixes.vue.js",
 		include_str!("tests/ignores_non_statement_import_prefixes.vue.js"),
-	)
-	.expect("helper should parse");
+	).unwrap();
 
 	assert_eq!(component.imports, vec!["import{ named } from './helper.js';\n"]);
 	assert!(component.script.as_deref().unwrap().contains("importedAt = Date.now();"));
@@ -171,29 +209,32 @@ fn ignores_non_statement_import_prefixes() {
 
 #[test]
 fn rejects_multiple_script_tags() {
-	assert!(parse_component(
+	let mut log = crate::log::Logger::new();
+	let _component = Component::parse(&mut log,
 		"src/build/tests/rejects_multiple_script_tags.vue",
 		include_str!("tests/rejects_multiple_script_tags.vue"),
-	)
-	.is_none());
+	).unwrap();
+	assert!(!log.finished(), "multiple script tags should be reported as an error");
 }
 
 #[test]
 fn rejects_template_and_div_together() {
-	assert!(parse_component(
+	let mut log = crate::log::Logger::new();
+	let _component = Component::parse(&mut log,
 		"src/build/tests/rejects_template_and_div_together.vue",
 		include_str!("tests/rejects_template_and_div_together.vue"),
-	)
-	.is_none());
+	).unwrap();
+	assert!(!log.finished(), "template and div together should be reported as an error");
 }
 
 #[test]
 fn rejects_full_document() {
-	assert!(parse_component(
+	let mut log = crate::log::Logger::new();
+	let _component = Component::parse(&mut log,
 		"src/build/tests/rejects_full_document.vue",
 		include_str!("tests/rejects_full_document.vue"),
-	)
-	.is_none());
+	).unwrap();
+	assert!(!log.finished(), "full document should be reported as an error");
 }
 
 #[test]

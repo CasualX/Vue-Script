@@ -17,8 +17,10 @@ fn find_source_span<'a>(file: &'a str, source: &str, needle: &str) -> Option<log
 
 	Some(log::LineSpan {
 		file,
-		line,
-		span: column_start..(column_start + width),
+		line_start: line,
+		line_end: line,
+		column_start,
+		column_end: column_start + width,
 	})
 }
 

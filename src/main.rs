@@ -32,10 +32,8 @@ fn main() {
 				.help("Start the server and return immediately, leaving the process running")
 			)
 		);
-	let matches = app.get_matches();
 
-
-	let success = match matches.subcommand() {
+	let success = match app.get_matches().subcommand() {
 		Some(("build", _matches)) => {
 			let mut log = log::Logger::new();
 			build::main(&mut log);
@@ -58,7 +56,7 @@ fn main() {
 		Some((command, _)) => unreachable!("Unknown command: {}", command),
 		None => {
 			println!("Welcome!");
-			std::process::exit(0);
+			true
 		},
 	};
 
