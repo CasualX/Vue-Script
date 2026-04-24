@@ -1,8 +1,8 @@
 # Vue Script
 
-Vue 2 Bespoke Single File Components (VB.sfc) without the insanity that comes with the NPM ecosystem.
+Vue 3 Bespoke Single File Components (VB.sfc) without the insanity that comes with the NPM ecosystem.
 
-Vue Script is a small build tool for Vue 2 style single file components. It reads a project description from `vue-script.toml`, pulls templates and component dependencies together, extracts top-level `import` lines from script files, and writes a final HTML file.
+Vue Script is a small build tool for global-runtime Vue single file components. The bundled example uses Vue 3 loaded from the page HTML, while the builder itself focuses on assembling templates, dependency-ordered scripts, imports, and styles into one final HTML file.
 
 ## Install
 

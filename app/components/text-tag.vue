@@ -1,24 +1,21 @@
 <link rel="component" href="script.vue.js">
 
 <script>
-Vue.component('text-tag', {
+const TextTag = {
 	template: '#text-tag',
-	data() {
-		return {};
-	},
 	props: {
 		text: String,
 	},
 	computed: {
-		all_caps() {
+		allCaps() {
 			return allCaps(this.text);
 		},
 	},
-});
+};
 </script>
 
 <template id="text-tag">
-	<div class="text-tag">{{ all_caps }}</div>
+	<div class="text-tag">{{ allCaps }}</div>
 </template>
 
 <style>

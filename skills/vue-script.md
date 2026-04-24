@@ -1,6 +1,6 @@
 ---
 name: vue-script
-description: 'Build and edit apps that use Vue-Script, a custom Vue 2 build tool. Use when working with vue-script.toml, configured page HTML placeholders, .vue components, .vue.js helpers, .vue.css styles, or when wiring component link dependencies and import lines in Vue-Script projects.'
+description: 'Build and edit apps that use Vue-Script, a custom Vue build tool. Use when working with vue-script.toml, configured page HTML placeholders, .vue components, .vue.js helpers, .vue.css styles, or when wiring component link dependencies and import lines in Vue-Script projects.'
 argument-hint: 'Describe the app, components, and any Vue-Script files to create or update.'
 ---
 
@@ -8,7 +8,7 @@ argument-hint: 'Describe the app, components, and any Vue-Script files to create
 
 Use this skill when building or modifying apps that use Vue-Script.
 
-Vue-Script is not Vite, webpack, or Vue SFC tooling. It is a custom Rust build script that assembles Vue 2 apps into one HTML file by:
+Vue-Script is not Vite, webpack, or Vue SFC tooling. It is a custom Rust build script that assembles Vue apps into one HTML file by:
 
 1. Loading configuration from `vue-script.toml`.
 2. Starting from the configured main component.
@@ -16,7 +16,7 @@ Vue-Script is not Vite, webpack, or Vue SFC tooling. It is a custom Rust build s
 4. Collecting templates, scripts, imports, and styles.
 5. Injecting them into the configured page template.
 
-The runtime model is Vue 2 loaded from the page HTML, not Vue 3 or a bundler-managed runtime.
+The default authoring model in this repo is Vue 3 loaded from the page HTML, not a bundler-managed runtime.
 
 ## When To Use
 
@@ -52,11 +52,11 @@ Paths in `vue-script.toml` are relative to the project root, which is the direct
 
 `[target].path` is optional. If it is omitted, the builder prints the assembled HTML to stdout instead of writing a file.
 
-## Vue 2 Runtime Assumption
+## Vue 3 Runtime Assumption
 
-The configured page HTML is responsible for loading Vue 2. Build component scripts assuming `Vue` is available globally.
+The configured page HTML is responsible for loading Vue 3. Build component scripts assuming `Vue` is available globally.
 
-The page shell should load Vue 2 before the injected app code and preserve the three build placeholders, for example:
+The page shell should load Vue 3 before the injected app code and preserve the three build placeholders, for example:
 
 ```html
 <!DOCTYPE html>
@@ -65,7 +65,7 @@ The page shell should load Vue 2 before the injected app code and preserve the t
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Vue-Script App</title>
-	<script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
 <!-- STYLES -->
 </head>
 <body>
@@ -75,7 +75,7 @@ The page shell should load Vue 2 before the injected app code and preserve the t
 </html>
 ```
 
-Do not switch the project to Vue 3 patterns, if the user asks for Vue 3 patterns, explain the limitation and work within the supported Vue 2 workflow.
+Prefer Vue 3 global-runtime patterns such as `Vue.createApp(...)`, `app.component(...)`, and component objects exported through the assembled script order.
 
 ## Supported File Types
 
@@ -112,13 +112,18 @@ Use this shape for a parent or root component file that renders two child compon
 <link rel="component" href="components/feature-list.vue">
 
 <script>
-new Vue({
-	el: '#app',
-	data: {
-		title: 'Hello Vue-Script',
-		features: ['Small build tool', 'Vue 2 runtime', 'Single HTML output'],
+const app = Vue.createApp({
+	data() {
+		return {
+			title: 'Hello Vue-Script',
+			features: ['Small build tool', 'Vue 3 runtime', 'Single HTML output'],
+		};
 	},
 });
+
+app.component('hero-banner', HeroBanner);
+app.component('feature-list', FeatureList);
+app.mount('#app');
 </script>
 
 <div id="app">
@@ -135,12 +140,12 @@ then use BEM-style class names such as `hero-banner__title` for internal element
 
 ```html
 <script>
-Vue.component('hero-banner', {
+const HeroBanner = {
 	template: '#hero-banner',
 	props: {
 		title: String,
 	},
-});
+};
 </script>
 
 <template id="hero-banner">
@@ -177,9 +182,11 @@ Example:
 <link rel="component" href="helpers/formatters.vue.js">
 
 <script>
-new Vue({
-	el: '#app',
-});
+const app = Vue.createApp({});
+
+app.component('hero-banner', HeroBanner);
+app.component('feature-list', FeatureList);
+app.mount('#app');
 </script>
 ```
 
@@ -213,9 +220,7 @@ Example:
 <script>
 	import { something } from './module.js';
 
-	new Vue({
-		el: '#app',
-	});
+	Vue.createApp({}).mount('#app');
 </script>
 ```
 
@@ -269,13 +274,13 @@ When asked to build an app with Vue-Script, follow this workflow:
 
 1. Inspect `vue-script.toml` to find the real page and main entry paths.
 2. Inspect the page HTML and preserve the placeholder comments.
-3. Keep Vue 2 runtime loading in the page shell.
+3. Keep Vue 3 runtime loading in the page shell.
 4. Declare every child component and helper dependency with top-level `<link rel="component" href="...">` elements on the file that needs it.
 5. Keep JavaScript imports as normal `import ...;` lines in the script body, one import per line if you want Vue-Script to extract them.
 6. Put reusable helpers in `.vue.js` files when they do not need a template.
 7. Put reusable global CSS in `.vue.css` files when it is shared across multiple components.
 8. Use BEM-style class naming to keep component styles local in practice, for example `.hero-banner`, `.hero-banner__title`, and `.hero-banner--compact`.
-9. Keep component names, template ids, and custom element tags aligned.
+9. Keep component names, template ids, custom element tags, and registered component objects aligned.
 10. Prefer small dependency graphs with clear one-way dependency relationships.
 11. Avoid circular dependency chains; the builder only warns and may skip part of the cycle.
 
@@ -290,7 +295,7 @@ For a project where a root component depends on child components and helpers:
 
 ## What To Avoid
 
-- Do not write Vue 3 `createApp(...)` patterns.
+- Do not write Vue 2 `new Vue(...)` or global `Vue.component(...)` patterns in new example code unless the existing project already depends on them.
 - Do not assume `.vue` files are compiled by npm tooling.
 - Do not add unsupported top-level blocks such as `<script setup>`.
 - Do not remove or rename the HTML placeholder comments.
@@ -333,7 +338,7 @@ For validation, prefer checking that:
 - Each component link `href` resolves correctly relative to its component.
 - The page HTML still contains all three placeholders.
 - `.vue` files use the expected top-level order.
-- Generated app behavior matches Vue 2 global-runtime assumptions.
+- Generated app behavior matches Vue 3 global-runtime assumptions.
 
 ## Implementation Notes For Agents
 
@@ -341,4 +346,5 @@ When generating Vue-Script code:
 
 - Follow the file naming and placement conventions already used by the target project.
 - Keep changes minimal and consistent with the capabilities of the Vue-Script tool.
+- Prefer Vue 3 global-runtime patterns unless the target codebase already uses older Vue APIs.
 - If the user asks for features that the Vue-Script tool does not support, explain the limitation and work within the supported workflow instead of inventing unsupported behavior.
