@@ -79,11 +79,54 @@ fn parses_valid_vue_fragment() {
 	assert_eq!(component.path, "src/build/tests/parses_valid_vue_fragment.vue");
 	assert_eq!(component.links, vec!["src/build/tests/components/child.vue"]);
 	assert_eq!(component.imports, vec!["import { createApp } from 'vue';\n"]);
+	assert_eq!(component.custom_tag, None);
 	assert!(component.script.as_deref().unwrap().contains("console.log"));
 	assert!(!component.script.as_deref().unwrap().contains("import { createApp } from 'vue';"));
 	assert!(component.template.as_deref().unwrap().starts_with("<template>"));
 	assert!(component.style.as_deref().unwrap().contains("div { color: red; }"));
 	assert!(!component.style.as_deref().unwrap().contains("<style>"));
+}
+
+#[test]
+fn warns_when_component_root_is_missing_id() {
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
+		"src/build/tests/missing_root_id.vue",
+		"<template><example-child></example-child></template>\n",
+	).unwrap();
+
+	assert_eq!(component.custom_tag, None);
+	assert_eq!(component.used_custom_tags.len(), 1);
+	assert_eq!(component.used_custom_tags[0].tag, "example-child");
+	assert_eq!(log.error_count(), 0);
+	assert_eq!(log.warning_count(), 1);
+}
+
+#[test]
+fn validates_direct_component_import_usage() {
+	let mut log = crate::log::Logger::new();
+	let main_component = Component::parse(&mut log,
+		"src/build/tests/validate_main.vue",
+		"<link rel=\"component\" href=\"known-child.vue\">\n<link rel=\"component\" href=\"unused-child.vue\">\n<div id=\"validate-main\">\n	<known-child></known-child>\n	<missing-child></missing-child>\n</div>\n",
+	).unwrap();
+	let known_child = Component::parse(&mut log,
+		"src/build/tests/known-child.vue",
+		"<div id=\"known-child\"></div>\n",
+	).unwrap();
+	let unused_child = Component::parse(&mut log,
+		"src/build/tests/unused-child.vue",
+		"<div id=\"unused-child\"></div>\n",
+	).unwrap();
+
+	assert_eq!(log.error_count(), 0);
+	assert_eq!(log.warning_count(), 0);
+
+	validate_components(&mut log, &[main_component, known_child, unused_child]);
+
+	assert_eq!(log.error_count(), 1);
+	assert_eq!(log.warning_count(), 1);
+	assert!(log.has_errors());
+	assert!(log.has_warnings());
 }
 
 #[test]
@@ -245,6 +288,8 @@ fn renders_styles_in_single_tag() {
 			source: String::new(),
 			links: Vec::new(),
 			imports: Vec::new(),
+			custom_tag: None,
+			used_custom_tags: Vec::new(),
 			template: None,
 			script: None,
 			style: Some(".one { color: red; }".to_string()),
@@ -254,6 +299,8 @@ fn renders_styles_in_single_tag() {
 			source: String::new(),
 			links: Vec::new(),
 			imports: Vec::new(),
+			custom_tag: None,
+			used_custom_tags: Vec::new(),
 			template: None,
 			script: None,
 			style: Some(".two { color: blue; }".to_string()),

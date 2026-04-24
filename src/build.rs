@@ -7,6 +7,22 @@ use super::*;
 mod component;
 use component::Component;
 
+fn log_span<'a>(file: &'a str, source: &str, span: tagsoup::Span) -> log::LineSpan<'a> {
+	let resolved = span.resolve(source);
+	let line_start = resolved.start_line as usize;
+	let line_end = resolved.end_line as usize;
+	let column_start = resolved.start_column as usize;
+	let column_end = resolved.end_column as usize;
+
+	log::LineSpan {
+		file,
+		line_start,
+		line_end,
+		column_start,
+		column_end,
+	}
+}
+
 fn find_source_span<'a>(file: &'a str, source: &str, needle: &str) -> Option<log::LineSpan<'a>> {
 	let start = source.find(needle)?;
 	let prefix = &source[..start];
@@ -69,6 +85,44 @@ fn render_styles(components: &[Component]) -> String {
 	let styles: Vec<_> = components.iter().filter_map(|component| component.style.as_deref()).collect();
 
 	format!("<style>\n{}\n</style>", styles.join("\n"))
+}
+
+fn validate_components(log: &mut log::Logger, components: &[Component]) {
+	let collection: HashMap<&str, &Component> = components.iter().map(|component| (component.path.as_str(), component)).collect();
+
+	for component in components {
+		let direct_imports: HashMap<&str, &Component> = component.links.iter()
+			.filter_map(|path| collection.get(path.as_str()).copied())
+			.filter_map(|imported| imported.custom_tag.as_deref().map(|tag| (tag, imported)))
+			.collect();
+		let used_tags: HashSet<&str> = component.used_custom_tags.iter().map(|used| used.tag.as_str()).collect();
+
+		for imported in direct_imports.values() {
+			let Some(custom_tag) = imported.custom_tag.as_deref() else {
+				continue;
+			};
+
+			if !used_tags.contains(custom_tag) {
+				log.log(Some(component.source.as_str()), log::LogEntry {
+					level: log::LogLevel::Warn,
+					span: None,
+					message: format!("Component \"{}\" imports \"{}\" but never uses <{}>.", component.path, imported.path, custom_tag),
+					note: Some("Remove the unused link import or add the matching custom element to the template."),
+				});
+			}
+		}
+
+		for used in &component.used_custom_tags {
+			if !direct_imports.contains_key(used.tag.as_str()) {
+				log.log(Some(component.source.as_str()), log::LogEntry {
+					level: log::LogLevel::Error,
+					span: Some(log_span(component.path.as_str(), component.source.as_str(), used.span)),
+					message: format!("Component \"{}\" uses <{}> without a direct component import.", component.path, used.tag),
+					note: Some("Add a matching top-level <link rel=\"component\" href=\"...\"> import for this custom element."),
+				});
+			}
+		}
+	}
 }
 
 fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Component]) -> String {
@@ -197,6 +251,7 @@ pub fn main(log: &mut log::Logger) {
 
 	let project_path = config.path.parent().unwrap();
 	let components = collect_components(log, project_path, &config.app.main);
+	validate_components(log, &components);
 
 	let scripts = render_scripts(log, config, &components);
 	let styles = render_styles(&components);

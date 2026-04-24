@@ -86,8 +86,27 @@ impl Logger {
 	}
 }
 
+#[cfg(test)]
+impl Logger {
+	pub fn error_count(&self) -> usize {
+		self.errors
+	}
+
+	pub fn has_warnings(&self) -> bool {
+		self.warns > 0
+	}
+
+	pub fn warning_count(&self) -> usize {
+		self.warns
+	}
+}
+
 fn get_source_line<'a>(source: Option<&'a str>, span: &LineSpan) -> Option<&'a str> {
 	source.and_then(|source| source.lines().nth(span.line_start.saturating_sub(1)))
+}
+
+fn caret_prefix(source_line: &str, column_start: usize) -> String {
+	source_line.chars().take(column_start).map(|ch| match ch { '\t' => '\t', _ => ' ' }).collect()
 }
 
 fn write_plain_entry(mut writer: impl Write, source: Option<&str>, entry: &LogEntry<'_>) {
@@ -98,18 +117,18 @@ fn write_plain_entry(mut writer: impl Write, source: Option<&str>, entry: &LogEn
 	if let Some(span) = &entry.span {
 		let span_file = span.file;
 		let span_line = span.line_start;
-		let location_column = span.column_start.saturating_add(1);
+		let location_column = span.column_start;
 		let _ = writeln!(writer, " --> {span_file}:{span_line}:{location_column}");
 
 		if let Some(source_line) = get_source_line(source, span) {
 			let gutter_width = span_line.to_string().len();
-			let caret_padding = span.column_start;
+			let caret_prefix = caret_prefix(source_line, span.column_start);
 			let caret_count = usize::max(1, span.column_end.saturating_sub(span.column_start));
 			let blank = "";
 
 			let _ = writeln!(writer, "{0:>gutter_width$} |", blank);
 			let _ = writeln!(writer, "{span_line:>gutter_width$} | {source_line}");
-			let _ = writeln!(writer, "{0:>gutter_width$} | {0:>caret_padding$}{0:^>caret_count$}", blank);
+			let _ = writeln!(writer, "{0:>gutter_width$} | {caret_prefix}{0:^>caret_count$}", blank);
 		}
 	}
 
@@ -132,16 +151,45 @@ fn write_colored_entry(mut writer: impl Write, source: Option<&str>, entry: &Log
 
 		if let Some(source_line) = get_source_line(source, span) {
 			let gutter_width = span_line_start.to_string().len();
-			let caret_padding = span.column_start;
+			let caret_prefix = caret_prefix(source_line, span.column_start);
 			let caret_count = usize::max(1, span.column_end.saturating_sub(span.column_start));
 
 			let _ = writeln!(writer, " \x1b[2;34m{0:>gutter_width$} |\x1b[0m", "");
 			let _ = writeln!(writer, " \x1b[1;34m{span_line_start:>gutter_width$}\x1b[0m \x1b[2;34m|\x1b[0m {source_line}");
-			let _ = writeln!(writer, " \x1b[2;34m{0:>gutter_width$} |\x1b[0m {0:>caret_padding$}\x1b[{level_color}m{0:^>caret_count$}\x1b[0m", "");
+			let _ = writeln!(writer, " \x1b[2;34m{0:>gutter_width$} |\x1b[0m {caret_prefix}\x1b[{level_color}m{0:^>caret_count$}\x1b[0m", "");
 		}
 	}
 
 	if let Some(note) = entry.note {
 		let _ = writeln!(writer, " \x1b[1;32mhelp\x1b[0m\x1b[2m:\x1b[0m {note}");
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn plain_log_carets_preserve_tab_indentation() {
+		let entry = LogEntry {
+			level: LogLevel::Error,
+			span: Some(LineSpan {
+				file: "component.vue",
+				line_start: 2,
+				line_end: 2,
+				column_start: 2,
+				column_end: 15,
+			}),
+			message: "bad tag".to_string(),
+			note: None,
+		};
+		let mut output = Vec::new();
+
+		write_plain_entry(&mut output, Some("<div>\n\t<missing-child></missing-child>\n</div>\n"), &entry);
+
+		let rendered = String::from_utf8(output).unwrap();
+		assert!(rendered.contains(" --> component.vue:2:2\n"));
+		assert!(rendered.contains("2 | \t<missing-child></missing-child>\n"));
+		assert!(rendered.contains("  | \t ^^^^^^^^^^^^^\n"));
 	}
 }

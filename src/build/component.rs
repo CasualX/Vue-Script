@@ -1,26 +1,17 @@
 use crate::log;
+use super::*;
 
 mod vue;
 mod js;
 
-fn outer_html<'a>(source: &'a str, span: tagsoup::Span) -> &'a str {
-	&source[span.start as usize..span.end as usize]
+#[derive(Debug, Clone)]
+pub struct UsedCustomTag {
+	pub tag: String,
+	pub span: tagsoup::Span,
 }
 
-fn log_span<'a>(file: &'a str, source: &str, span: tagsoup::Span) -> log::LineSpan<'a> {
-	let resolved = span.resolve(source);
-	let line_start = resolved.start_line as usize;
-	let line_end = resolved.end_line as usize;
-	let column_start = resolved.start_column.saturating_sub(1) as usize;
-	let column_end = resolved.end_column.saturating_sub(1) as usize;
-
-	log::LineSpan {
-		file,
-		line_start,
-		line_end,
-		column_start,
-		column_end,
-	}
+fn outer_html<'a>(source: &'a str, span: tagsoup::Span) -> &'a str {
+	&source[span.start as usize..span.end as usize]
 }
 
 #[derive(Debug)]
@@ -29,6 +20,8 @@ pub struct Component {
 	pub source: String,
 	pub links: Vec<String>,
 	pub imports: Vec<String>,
+	pub custom_tag: Option<String>,
+	pub used_custom_tags: Vec<UsedCustomTag>,
 	pub template: Option<String>,
 	pub script: Option<String>,
 	pub style: Option<String>,
@@ -64,6 +57,8 @@ fn parse_component_js(component_path: &str, source: &str) -> Option<Component> {
 		source: source.to_string(),
 		links: Vec::new(),
 		imports,
+		custom_tag: None,
+		used_custom_tags: Vec::new(),
 		template: None,
 		script: Some(script),
 		style: None,
@@ -76,6 +71,8 @@ fn parse_component_css(component_path: &str, source: &str) -> Option<Component> 
 		source: source.to_string(),
 		links: Vec::new(),
 		imports: Vec::new(),
+		custom_tag: None,
+		used_custom_tags: Vec::new(),
 		template: None,
 		script: None,
 		style: Some(source.to_string()),

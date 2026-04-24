@@ -82,12 +82,26 @@ fn parse_component_link(log: &mut log::Logger, component_path: &str, source: &st
 	Some(href)
 }
 
+fn collect_used_custom_tags(element: &tagsoup::Element, used: &mut HashMap<String, tagsoup::Span>) {
+	if element.tag.contains('-') {
+		used.entry(element.tag.to_string()).or_insert(element.tag_span);
+	}
+
+	for child in &element.children {
+		if let tagsoup::Node::Element(child) = child {
+			collect_used_custom_tags(child, used);
+		}
+	}
+}
+
 pub fn parse(log: &mut log::Logger, component_path: &str, source: &str) -> Option<Component> {
 	let component_base_path = component_path.rfind("/").map_or("", |index| &component_path[..index]);
 
 	let path = component_path.to_string();
 	let mut links = Vec::new();
 	let mut imports = Vec::new();
+	let mut custom_tag = None;
+	let mut used_custom_tags = Vec::new();
 	let mut script = None;
 	let mut template = None;
 	let mut style = None;
@@ -178,6 +192,22 @@ pub fn parse(log: &mut log::Logger, component_path: &str, source: &str) -> Optio
 						});
 					}
 					else {
+						if let Some(id) = el.id {
+							custom_tag = Some(id.to_ascii_lowercase());
+						}
+						else {
+							log.log(Some(source), log::LogEntry {
+								level: log::LogLevel::Warn,
+								span: Some(log_span(component_path, source, el.tag_span)),
+								message: format!("Component \"{}\" is missing an id on its top-level <{}> element.", component_path, el.tag),
+								note: Some("Set the top-level template or div id to the component's custom tag name."),
+							});
+						}
+
+						let mut used = HashMap::new();
+						collect_used_custom_tags(el, &mut used);
+						used_custom_tags = used.into_iter().map(|(tag, span)| UsedCustomTag { tag, span }).collect();
+						used_custom_tags.sort_by(|left, right| left.tag.cmp(&right.tag));
 						template = Some(outer_html(source, el.span).to_string());
 					}
 				}
@@ -198,6 +228,8 @@ pub fn parse(log: &mut log::Logger, component_path: &str, source: &str) -> Optio
 		source: source.to_string(),
 		links,
 		imports,
+		custom_tag,
+		used_custom_tags,
 		template,
 		script,
 		style,
