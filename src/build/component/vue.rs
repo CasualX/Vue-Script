@@ -82,7 +82,7 @@ fn parse_component_link(log: &mut log::Logger, component_path: &str, source: &st
 	Some(href)
 }
 
-fn collect_used_custom_tags(element: &tagsoup::Element, used: &mut HashMap<String, tagsoup::Span>) {
+fn collect_used_custom_tags(element: &tagsoup::Element, used: &mut HashMap<String, tagsoup::SourceSpan>) {
 	if element.tag.contains('-') {
 		used.entry(element.tag.to_string()).or_insert(element.tag_span);
 	}

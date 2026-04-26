@@ -7,8 +7,8 @@ use super::*;
 mod component;
 use component::Component;
 
-fn log_span<'a>(file: &'a str, source: &str, span: tagsoup::Span) -> log::LineSpan<'a> {
-	let resolved = span.resolve(source);
+fn log_span<'a>(file: &'a str, source: &str, span: tagsoup::SourceSpan) -> log::LineSpan<'a> {
+	let resolved = span.resolve(source).unwrap();
 	let line_start = resolved.start_line as usize;
 	let line_end = resolved.end_line as usize;
 	let column_start = resolved.start_column as usize;

@@ -7,10 +7,10 @@ mod js;
 #[derive(Debug, Clone)]
 pub struct UsedCustomTag {
 	pub tag: String,
-	pub span: tagsoup::Span,
+	pub span: tagsoup::SourceSpan,
 }
 
-fn outer_html<'a>(source: &'a str, span: tagsoup::Span) -> &'a str {
+fn outer_html<'a>(source: &'a str, span: tagsoup::SourceSpan) -> &'a str {
 	&source[span.start as usize..span.end as usize]
 }
 
