@@ -1,7 +1,7 @@
 ---
 name: vue-script
-description: 'Build and edit apps that use Vue-Script, a custom Vue build tool. Use when working with vue-script.toml, configured page HTML placeholders, .vue components, .vue.js helpers, .vue.css styles, or when wiring component link dependencies and import lines in Vue-Script projects.'
-argument-hint: 'Describe the app, components, and any Vue-Script files to create or update.'
+description: 'Build, edit, debug, inspect, preview, and validate apps that use Vue-Script, a custom Vue build tool. Use when working with vue-script.toml, configured page HTML placeholders, .vue components, .vue.js helpers, .vue.css styles, component dependencies, generated HTML, or runtime and UI behavior in a Vue-Script site.'
+argument-hint: 'Describe the app, components, issue, or UI behavior to create, update, inspect, or test.'
 ---
 
 # Vue-Script
@@ -16,7 +16,7 @@ Vue-Script is not Vite, webpack, or Vue SFC tooling. It is a custom Rust build s
 4. Collecting templates, scripts, imports, and styles.
 5. Injecting them into the configured page template.
 
-The default authoring model in this repo is Vue 3 loaded from the page HTML, not a bundler-managed runtime.
+Vue-Script commonly uses Vue from the configured page HTML rather than a bundler-managed runtime. Inspect the target project before choosing or changing its Vue integration.
 
 ## When To Use
 
@@ -24,7 +24,9 @@ The default authoring model in this repo is Vue 3 loaded from the page HTML, not
 - Editing `vue-script.toml`, page shell HTML, or `.vue` component files.
 - Adding shared helper code in `.vue.js` files.
 - Adding shared styles in `.vue.css` files.
-- Fixing build issues caused by bad dependency paths, bad component ordering, or malformed top-level `.vue` structure.
+- Fixing build issues involving dependency paths, dependency cycles, or malformed top-level `.vue` structure.
+- Debugging a generated page that fails to load, mount, render, or behave correctly.
+- Previewing a Vue-Script site and checking its rendered DOM, console output, layout, or interactions.
 
 ## Core Model
 
@@ -52,11 +54,11 @@ Paths in `vue-script.toml` are relative to the project root, which is the direct
 
 `[target].path` is optional. If it is omitted, the builder prints the assembled HTML to stdout instead of writing a file.
 
-## Vue 3 Runtime Assumption
+## Vue Runtime Integration
 
-The configured page HTML is responsible for loading Vue 3. Build component scripts assuming `Vue` is available globally.
+Vue-Script does not provide the Vue runtime. Inspect the configured page and existing components to determine how the project loads Vue, and preserve its established Vue version and API style.
 
-The page shell should load Vue 3 before the injected app code and preserve the three build placeholders, for example:
+For a new project with no established runtime convention, prefer Vue 3 loaded globally from the page before the injected app code. Preserve the three build placeholders, for example:
 
 ```html
 <!DOCTYPE html>
@@ -75,7 +77,7 @@ The page shell should load Vue 3 before the injected app code and preserve the t
 </html>
 ```
 
-Prefer Vue 3 global-runtime patterns such as `Vue.createApp(...)`, `app.component(...)`, and component objects exported through the assembled script order.
+For that Vue 3 global-runtime model, use patterns such as `Vue.createApp(...)`, `app.component(...)`, and component objects declared through the assembled script order. When editing an existing project, follow its runtime and APIs instead.
 
 ## Supported File Types
 
@@ -89,17 +91,16 @@ Any other component-like extension is unsupported by the builder.
 
 ## `.vue` File Structure
 
-A `.vue` file must be an HTML fragment, not a full HTML document. Top-level content must be ordered as:
+A `.vue` file must be an HTML fragment, not a full HTML document. Prefer this top-level order for consistency and readability:
 
 1. Zero or more `<link>` elements
 2. Optional `<script>`
 3. Optional `<template>` xor `<div>`
 4. Optional `<style>`
 
-Important constraints enforced by the parser:
+The parser accepts these supported top-level elements in any order, and it allows top-level whitespace and comments. Important constraints enforced by the parser are:
 
-- No extra top-level text nodes.
-- No extra top-level comments.
+- No non-whitespace top-level text nodes.
 - No duplicate top-level sections.
 - Do not include both `<template>` and `<div>` in the same file.
 - `<script>` and `<style>` must use explicit closing tags.
@@ -198,9 +199,7 @@ Behavior:
 - Dependency scripts are emitted before the component that depends on them.
 - A parent file declares component links for its children and helpers; a child component does not depend on itself.
 - Declare every child component or helper that the current file depends on.
-- `rel="component"` is the supported dependency declaration.
-- Non-component link relations are ignored with a warning.
-- Each component link must provide an `href` attribute.
+- Write dependency links as `<link rel="component" href="...">`.
 
 Use component links for:
 
@@ -208,7 +207,7 @@ Use component links for:
 - Shared `.vue.js` helpers.
 - Shared `.vue.css` styles.
 
-Treat the dependency graph as a directed acyclic graph. The builder orders scripts by walking dependencies first, so circular dependency chains break the intended ordering and produce warnings.
+Keep the dependency graph acyclic. The builder orders scripts by walking dependencies first.
 
 ### `import` lines in script source
 
@@ -266,15 +265,13 @@ Assembly behavior:
 - Collected `import` statements are emitted before component script bodies.
 - Script bodies are ordered so dependencies come before dependents.
 
-If a placeholder is missing, the builder warns and leaves the source HTML unchanged at that location.
-
 ## Practical Authoring Guidance
 
 When asked to build an app with Vue-Script, follow this workflow:
 
 1. Inspect `vue-script.toml` to find the real page and main entry paths.
 2. Inspect the page HTML and preserve the placeholder comments.
-3. Keep Vue 3 runtime loading in the page shell.
+3. Preserve the project's existing Vue runtime integration; for a new project, load Vue 3 before the injected app code.
 4. Declare every child component and helper dependency with top-level `<link rel="component" href="...">` elements on the file that needs it.
 5. Keep JavaScript imports as normal `import ...;` lines in the script body, one import per line if you want Vue-Script to extract them.
 6. Put reusable helpers in `.vue.js` files when they do not need a template.
@@ -282,7 +279,6 @@ When asked to build an app with Vue-Script, follow this workflow:
 8. Use BEM-style class naming to keep component styles local in practice, for example `.hero-banner`, `.hero-banner__title`, and `.hero-banner--compact`.
 9. Keep component names, template ids, custom element tags, and registered component objects aligned.
 10. Prefer small dependency graphs with clear one-way dependency relationships.
-11. Avoid circular dependency chains; the builder only warns and may skip part of the cycle.
 
 ## Typical Build Result
 
@@ -306,13 +302,19 @@ For a project where a root component depends on child components and helpers:
 
 ## Build And Validation
 
-Agents should only run the build command themselves:
+Run the build before runtime or UI validation:
 
 ```bash
 vue-script build
 ```
 
-Other supported commands exist, but the agent should not run them automatically:
+This skill assumes the `vue-script` executable is installed and available on `PATH`. If it is unavailable, stop and tell the user to install it; do not install it on their behalf. For example:
+
+```bash
+cargo install vue-script
+```
+
+Other supported commands exist:
 
 ```bash
 vue-script open
@@ -321,24 +323,27 @@ vue-script serve
 
 Command behavior:
 
-- `vue-script build` assembles the configured output and is the only Vue-Script CLI command the agent should run directly.
+- `vue-script build` assembles the configured output.
 - `vue-script open` builds and opens the generated target as a local file in the browser, using the built output path directly rather than serving it over HTTP.
 - `vue-script serve` builds, starts a Python `http.server` from the project root on port `8000`, opens the resulting `http://127.0.0.1:8000/...` URL, and blocks the terminal until stopped unless the user explicitly uses detached mode.
 
-Agent rule:
+Do not hand browser validation back to the user when the available tools can perform it safely. Choose a preview method based on the app and environment:
 
-- Do not run `vue-script open`.
-- Do not run `vue-script serve`.
-- If the user wants to preview the built app in a browser, ask them to run `vue-script open` themselves.
-- If the user wants a local HTTP preview, ask them to run `vue-script serve` themselves in a separate terminal because it is blocking.
+- For self-contained output, a browser or browser-automation tool can load the generated target directly.
+- If module imports, browser security rules, or application behavior require HTTP, start a non-opening local server from the project root in a managed terminal session, inspect the configured target URL, and stop the server afterward. A command such as `python3 -m http.server 8000` is suitable when Python is available.
+- Use `vue-script open` only when opening an interactive browser is appropriate and permitted; it creates a GUI side effect and gives the agent less control over inspection.
+- Use `vue-script serve` only when its automatic opener and watch behavior are useful and permitted. Prefer blocking or otherwise managed execution so the process can be stopped; do not leave detached preview servers running unintentionally.
 
-For validation, prefer checking that:
+Validate in proportion to the change:
 
-- `vue-script.toml` points to real files.
-- Each component link `href` resolves correctly relative to its component.
-- The page HTML still contains all three placeholders.
-- `.vue` files use the expected top-level order.
-- Generated app behavior matches Vue 3 global-runtime assumptions.
+- Use a successful build as structural validation and respond to its diagnostics instead of manually duplicating the builder's checks.
+- For runtime, component, or UI changes, render the target with available browser automation and wait for Vue to mount. Check the post-mount DOM and browser console instead of relying only on source HTML.
+- Exercise the interactions affected by the task, such as clicks, form input, keyboard handling, emitted events, or navigation, and verify their visible state changes.
+- For visual changes, inspect screenshots at relevant viewport sizes and check for clipping, overflow, unreadable text, and broken responsive layout.
+- Distinguish application defects from preview-environment failures such as an unavailable Vue CDN or blocked module request.
+- Stop any preview server or browser process started for validation.
+
+If browser automation is unavailable, do not claim that runtime behavior or interactions were exercised.
 
 ## Implementation Notes For Agents
 
@@ -346,5 +351,5 @@ When generating Vue-Script code:
 
 - Follow the file naming and placement conventions already used by the target project.
 - Keep changes minimal and consistent with the capabilities of the Vue-Script tool.
-- Prefer Vue 3 global-runtime patterns unless the target codebase already uses older Vue APIs.
+- Match the target project's Vue runtime and API patterns. Use the Vue 3 global-runtime model only as the default for a new project without an established convention.
 - If the user asks for features that the Vue-Script tool does not support, explain the limitation and work within the supported workflow instead of inventing unsupported behavior.
