@@ -1,6 +1,6 @@
 # Vue Script
 
-Vue 3 Bespoke Single File Components (VB.sfc) without the insanity that comes with the NPM ecosystem.
+Vue 3 Bespoke Single File Components without the insanity that comes with the NPM ecosystem.
 
 Vue Script is a small build tool for global-runtime Vue single file components. The bundled example uses Vue 3 loaded from the page HTML, while the builder itself focuses on assembling templates, dependency-ordered scripts, imports, and styles into one final HTML file.
 
@@ -33,7 +33,7 @@ Build and open the configured target file:
 vue-script open
 ```
 
-Build, start a Python HTTP server from the project root, and open the configured target URL (requires Python to be installed and available in PATH):
+Build, start a loopback-only Python HTTP server from the project root, and open the configured target URL (requires Python to be installed and available in PATH):
 
 ```bash
 vue-script serve --port 8123
@@ -64,8 +64,9 @@ The project configuration file `vue-script.toml` is also watched implicitly so c
 Vue-Script `.vue` files are HTML fragments with zero or more top-level `<link rel="component" href="...">` elements, an optional `<script>`, an optional `<template>` or `<div>`, and an optional `<style>`. Put one component link at the top level for each child component or helper file dependency.
 
 JavaScript module imports should be written as normal `import ...;` lines inside the `<script>` block or a `.vue.js` helper file. Vue-Script collects lines that start with `import` after trimming leading whitespace and emits them before the remaining script bodies in the final module script.
+Module specifiers are preserved verbatim, so relative imports are resolved by the browser relative to the generated target HTML. This is intended for JavaScript modules placed alongside the target and its other vendored static resources, not relative to the source `.vue` file.
 
-All paths are relative to the file in which they are written.
+Component link paths are relative to the `.vue` file in which they are written.
 
 📜 License
 ----------

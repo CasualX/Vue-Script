@@ -7,6 +7,11 @@ use super::*;
 mod component;
 use component::Component;
 
+#[derive(Debug)]
+pub struct BuildError;
+
+pub type BuildResult = Result<(), BuildError>;
+
 fn log_span<'a>(file: &'a str, source: &str, span: tagsoup::SourceSpan) -> log::LineSpan<'a> {
 	let resolved = span.resolve(source).unwrap();
 	let line_start = resolved.start_line as usize;
@@ -235,7 +240,8 @@ fn collect_components(log: &mut log::Logger, project_path: &Path, main_component
 	components
 }
 
-pub fn main(log: &mut log::Logger) {
+pub fn main(log: &mut log::Logger) -> BuildResult {
+	log.reset();
 	let ref config = match Config::load(log) {
 		Ok(config) => config,
 		Err(err) => {
@@ -245,7 +251,7 @@ pub fn main(log: &mut log::Logger) {
 				message: format!("Failed to load configuration: {}", err),
 				note: Some("Check that the configuration file exists and is valid TOML."),
 			});
-			return;
+			return Err(BuildError);
 		},
 	};
 
@@ -273,12 +279,15 @@ pub fn main(log: &mut log::Logger) {
 							message: format!("Wrote \"{}\".", target_full_path.display()),
 							note: None,
 						}),
-						Err(err) => log.log(None, log::LogEntry {
-							level: log::LogLevel::Error,
-							span: None,
-							message: format!("Failed to write \"{}\": {}", target_full_path.display(), err),
-							note: Some("Check that the target path exists and is writable."),
-						}),
+						Err(err) => {
+							log.log(None, log::LogEntry {
+								level: log::LogLevel::Error,
+								span: None,
+								message: format!("Failed to write \"{}\": {}", target_full_path.display(), err),
+								note: Some("Check that the target path exists and is writable."),
+							});
+							return Err(BuildError);
+						},
 					}
 				}
 				else {
@@ -293,8 +302,11 @@ pub fn main(log: &mut log::Logger) {
 				message: format!("Failed to read app page \"{}\": {}", config.app.page, err),
 				note: Some("Check that the page file exists and is readable."),
 			});
+			return Err(BuildError);
 		}
 	}
+
+	if log.has_errors() { Err(BuildError) } else { Ok(()) }
 }
 
 #[cfg(test)]

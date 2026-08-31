@@ -59,9 +59,9 @@ fn spawn_server(root: &path::Path, server_port: u16) -> io::Result<process::Chil
 	let port = server_port.to_string();
 
 	for (program, args) in [
-		("python3", &["-m", "http.server", port.as_str()] as &[&str]),
-		("python", &["-m", "http.server", port.as_str()] as &[&str]),
-		("py", &["-3", "-m", "http.server", port.as_str()] as &[&str]),
+		("python3", &["-m", "http.server", &port, "--bind", "127.0.0.1"] as &[&str]),
+		("python", &["-m", "http.server", &port, "--bind", "127.0.0.1"] as &[&str]),
+		("py", &["-3", "-m", "http.server", &port, "--bind", "127.0.0.1"] as &[&str]),
 	] {
 		match process::Command::new(program).args(args).current_dir(root).spawn() {
 			Ok(child) => return Ok(child),
@@ -228,7 +228,7 @@ fn watch_and_rebuild(
 					if is_config_path(&relative_path) {
 						reload_runtime(log, runtime, port);
 					}
-					build::main(log);
+					let _ = build::main(log);
 				}
 			}
 			Ok(Err(err)) => {

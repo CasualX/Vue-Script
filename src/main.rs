@@ -36,21 +36,23 @@ fn main() {
 	let success = match app.get_matches().subcommand() {
 		Some(("build", _matches)) => {
 			let mut log = log::Logger::new();
-			build::main(&mut log);
+			let _ = build::main(&mut log);
 			log.finished()
 		},
 		Some(("open", _matches)) => {
 			let mut log = log::Logger::new();
-			build::main(&mut log);
-			open::main(&mut log);
+			if build::main(&mut log).is_ok() {
+				open::main(&mut log);
+			}
 			log.finished()
 		},
 		Some(("serve", matches)) => {
 			let mut log = log::Logger::new();
-			build::main(&mut log);
-			let detached = matches.get_flag("detached");
-			let port = *matches.get_one::<u16>("port").expect("serve port should have a default value");
-			serve::main(&mut log, detached, port);
+			if build::main(&mut log).is_ok() {
+				let detached = matches.get_flag("detached");
+				let port = *matches.get_one::<u16>("port").expect("serve port should have a default value");
+				serve::main(&mut log, detached, port);
+			}
 			log.finished()
 		},
 		Some((command, _)) => unreachable!("Unknown command: {}", command),

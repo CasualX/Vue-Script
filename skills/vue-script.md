@@ -227,6 +227,8 @@ Behavior:
 
 - The builder looks for lines that start with `import` after trimming leading whitespace.
 - Matching lines are collected and emitted before the remaining component script bodies in the final `<script type="module">` block.
+- Module specifiers are emitted unchanged. The browser resolves relative specifiers from the generated target HTML, not from the source `.vue` or `.vue.js` file.
+- Relative imports are intended for downloaded or vendored ES modules stored with the target's other static files.
 - Collected import lines do not add Vue-Script files to the dependency graph.
 - Import extraction is ad hoc and line-based, not a full JavaScript parse.
 
@@ -235,7 +237,7 @@ Use import lines for standard JavaScript module imports. Use component links for
 Keep the distinction clear:
 
 - `<link rel="component">` participates in Vue-Script dependency discovery and ordering.
-- `import` lines only emit JavaScript import statements into the final module script.
+- `import` lines only emit JavaScript import statements into the final module script; their paths use the generated target as their browser-visible base.
 
 ## Path Conventions
 
@@ -325,12 +327,12 @@ Command behavior:
 
 - `vue-script build` assembles the configured output.
 - `vue-script open` builds and opens the generated target as a local file in the browser, using the built output path directly rather than serving it over HTTP.
-- `vue-script serve` builds, starts a Python `http.server` from the project root on port `8000`, opens the resulting `http://127.0.0.1:8000/...` URL, and blocks the terminal until stopped unless the user explicitly uses detached mode.
+- `vue-script serve` builds, starts a loopback-only Python `http.server` from the project root on port `8000`, opens the resulting `http://127.0.0.1:8000/...` URL, and blocks the terminal until stopped unless the user explicitly uses detached mode.
 
 Do not hand browser validation back to the user when the available tools can perform it safely. Choose a preview method based on the app and environment:
 
 - For self-contained output, a browser or browser-automation tool can load the generated target directly.
-- If module imports, browser security rules, or application behavior require HTTP, start a non-opening local server from the project root in a managed terminal session, inspect the configured target URL, and stop the server afterward. A command such as `python3 -m http.server 8000` is suitable when Python is available.
+- If module imports, browser security rules, or application behavior require HTTP, start a non-opening local server from the project root in a managed terminal session, inspect the configured target URL, and stop the server afterward. A command such as `python3 -m http.server 8000 --bind 127.0.0.1` is suitable when Python is available.
 - Use `vue-script open` only when opening an interactive browser is appropriate and permitted; it creates a GUI side effect and gives the agent less control over inspection.
 - Use `vue-script serve` only when its automatic opener and watch behavior are useful and permitted. Prefer blocking or otherwise managed execution so the process can be stopped; do not leave detached preview servers running unintentionally.
 

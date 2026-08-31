@@ -2,6 +2,15 @@
 name = "vue-script"
 version = "0.2.0"
 edition = "2024"
+rust-version = "1.85"
+
+license = "MIT"
+readme = "readme.md"
+repository = "https://github.com/CasualX/Vue-Script"
+keywords = ["vue", "vue3", "sfc", "frontend", "build-tool"]
+categories = ["command-line-utilities", "development-tools", "web-programming"]
+exclude = [".vscode", "app", "skills", "vue-script.toml"]
+description = "Vue 3 Bespoke Single File Components without the insanity that comes with the NPM ecosystem."
 
 [dependencies]
 clap = { version = "4.5", features = ["cargo"] }

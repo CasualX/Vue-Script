@@ -62,6 +62,12 @@ impl Logger {
 		self.errors > 0
 	}
 
+	pub fn reset(&mut self) {
+		self.errors = 0;
+		self.warns = 0;
+		self.infos = 0;
+	}
+
 	pub fn log(&mut self, source: Option<&str>, entry: LogEntry<'_>) {
 		match entry.level {
 			LogLevel::Error => self.errors += 1,

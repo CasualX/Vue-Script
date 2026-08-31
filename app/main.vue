@@ -17,7 +17,7 @@ app.mount('#app');
 
 <div id="app">
 	<header class="app-header">
-		<h1>{{ message }} <text-tag text="components" /></h1>
+		<h1>{{ message }} <text-tag text="components"></text-tag></h1>
 		<p>A small Vue 3 example showing props, events, and local component scopes.</p>
 	</header>
 
