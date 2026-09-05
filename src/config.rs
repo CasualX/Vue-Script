@@ -20,6 +20,12 @@ pub struct ConfigTarget {
 	pub path: Option<String>,
 }
 
+#[derive(Clone, Default)]
+pub struct ConfigCheck {
+	pub typescript: Option<String>,
+	pub target: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct ServeWatchRule {
 	pattern: Pattern,
@@ -131,6 +137,7 @@ pub struct Config {
 	pub path: PathBuf,
 	pub app: ConfigApp,
 	pub target: ConfigTarget,
+	pub check: ConfigCheck,
 	pub serve: ConfigServe,
 }
 
@@ -161,6 +168,7 @@ fn parse_contents(log: &mut log::Logger, path: PathBuf, contents: &str) -> io::R
 		path: None,
 	};
 
+	let mut check = ConfigCheck::default();
 	let mut serve = ConfigServe::default();
 	let mut current_section = None;
 
@@ -168,7 +176,7 @@ fn parse_contents(log: &mut log::Logger, path: PathBuf, contents: &str) -> io::R
 		match line {
 			ini_core::Item::Section(section) => {
 				current_section = Some(section);
-				if section != "app" && section != "target" && section != "serve" {
+				if section != "app" && section != "target" && section != "check" && section != "serve" {
 					log.log(None, log::LogEntry {
 						level: log::LogLevel::Warn,
 						span: None,
@@ -198,6 +206,16 @@ fn parse_contents(log: &mut log::Logger, path: PathBuf, contents: &str) -> io::R
 							note: Some("Remove the key or rename it to a supported setting."),
 						}),
 					},
+					Some("check") => match key {
+						"typescript" => check.typescript = Some(parse_str(value)),
+						"target" => check.target = Some(parse_str(value)),
+						_ => log.log(None, log::LogEntry {
+							level: log::LogLevel::Warn,
+							span: None,
+							message: format!("Unknown config key [{}].{}.", "check", key),
+							note: Some("Remove the key or rename it to a supported setting."),
+						}),
+					},
 					Some("serve") => match key {
 						"watch" => {
 							let pattern = parse_str(&value);
@@ -224,7 +242,7 @@ fn parse_contents(log: &mut log::Logger, path: PathBuf, contents: &str) -> io::R
 		serve.watch.push(ServeWatchRule::from_ignored_target(log, target_path)?);
 	}
 
-	Ok(Config { path, app, target, serve })
+	Ok(Config { path, app, target, check, serve })
 }
 
 impl Config {

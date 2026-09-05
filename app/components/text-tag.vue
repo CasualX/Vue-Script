@@ -1,7 +1,7 @@
 <link rel="component" href="script.vue.js">
 
 <script>
-const TextTag = {
+const TextTag = Vue.defineComponent({
 	template: '#text-tag',
 	props: {
 		text: String,
@@ -11,7 +11,7 @@ const TextTag = {
 			return allCaps(this.text);
 		},
 	},
-};
+});
 </script>
 
 <template id="text-tag">

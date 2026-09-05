@@ -1,14 +1,43 @@
 use super::*;
 
+fn deindent(source: &str) -> String {
+	let indentation = source.lines()
+		.filter(|line| !line.trim_ascii().is_empty())
+		.map(|line| line.len() - line.trim_ascii_start().len())
+		.min().unwrap_or(0);
+
+	source.lines()
+		.map(|line| if line.trim_ascii().is_empty() { "" } else { &line[indentation..] })
+		.collect::<Vec<_>>().join("\n")
+}
+
+#[test]
+fn parses_check_options() {
+	let mut log = crate::log::Logger::new();
+	const CONFIG: &str = r#"
+		[check]
+		typescript = "tools/tsc"
+		target = "es2022"
+	"#;
+	let config = parse_contents(&mut log, PathBuf::from("vue-script.toml"), &deindent(CONFIG)).expect("config should parse");
+
+	assert_eq!(config.check.typescript.as_deref(), Some("tools/tsc"));
+	assert_eq!(config.check.target.as_deref(), Some("es2022"));
+}
+
 #[test]
 fn parses_repeated_watch_entries_and_ignores_target_output() {
 	let mut log = crate::log::Logger::new();
-	let config = parse_contents(
-		&mut log,
-		PathBuf::from("vue-script.toml"),
-		"[app]\nmain = \"app/main.vue\"\n[target]\npath = \"target/index.html\"\n[serve]\nwatch = \"app/**/*\"\nwatch = \"skills/*.md\"\n",
-	)
-	.expect("config should parse");
+	const CONFIG: &str = r#"
+		[app]
+		main = "app/main.vue"
+		[target]
+		path = "target/index.html"
+		[serve]
+		watch = "app/**/*"
+		watch = "skills/*.md"
+	"#;
+	let config = parse_contents(&mut log, PathBuf::from("vue-script.toml"), &deindent(CONFIG)).expect("config should parse");
 
 	assert_eq!(config.serve.watch.len(), 4);
 	assert_eq!(config.serve.watch[0].pattern.as_str(), "app/**/*");
@@ -36,12 +65,11 @@ fn parses_repeated_watch_entries_and_ignores_target_output() {
 #[test]
 fn target_ignore_rule_does_not_count_as_explicit_watch() {
 	let mut log = crate::log::Logger::new();
-	let config = parse_contents(
-		&mut log,
-		PathBuf::from("vue-script.toml"),
-		"[target]\npath = \"target/index.html\"\n",
-	)
-	.expect("config should parse");
+	const CONFIG: &str = r#"
+		[target]
+		path = "target/index.html"
+	"#;
+	let config = parse_contents(&mut log, PathBuf::from("vue-script.toml"), &deindent(CONFIG)).expect("config should parse");
 
 	assert_eq!(config.serve.explicit_watch_count(), 0);
 	assert!(config.serve.explicit_watch_count() == 0);
@@ -51,11 +79,11 @@ fn target_ignore_rule_does_not_count_as_explicit_watch() {
 #[test]
 fn rejects_invalid_watch_patterns() {
 	let mut log = crate::log::Logger::new();
-	let err = match parse_contents(
-		&mut log,
-		PathBuf::from("vue-script.toml"),
-		"[serve]\nwatch = \"[\"\n",
-	) {
+	const CONFIG: &str = r#"
+		[serve]
+		watch = "["
+	"#;
+	let err = match parse_contents(&mut log, PathBuf::from("vue-script.toml"), &deindent(CONFIG)) {
 		Ok(_) => panic!("invalid watch glob should fail"),
 		Err(err) => err,
 	};

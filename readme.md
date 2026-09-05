@@ -27,6 +27,56 @@ Build the configured target:
 vue-script build
 ```
 
+Check the project without writing the configured target:
+
+```bash
+vue-script check
+```
+
+The check command runs Vue-Script's component and HTML-fragment validation, assembles the final JavaScript module in memory, and checks that module with TypeScript.
+It requires `[check].target` so the ECMAScript environment is explicit; use a TypeScript target such as `"es2020"`, `"es2022"`, or `"esnext"` that matches the browsers supported by the project.
+It uses `tsc` on `PATH` by default. Set `[check].typescript` to select a specific compiler;
+absolute paths are used as-is and relative paths are resolved from the directory containing `vue-script.toml`.
+TypeScript is an optional development dependency and is not used by `build` or required by the browser runtime.
+
+Vue-Script injects a small checker-only declaration for the global-runtime `Vue` object. Wrap Options API component objects in `Vue.defineComponent({ ... })` to infer data, prop, computed, and method properties on `this` and validate `$emit` event names without installing the Vue type package. The declaration intentionally models only this lightweight subset; event payloads and other Vue global APIs remain dynamically typed, and implicit function parameter types are allowed for ordinary JavaScript.
+
+VS Code includes TypeScript language support, but it does not install the `tsc` command-line compiler. TypeScript is normally installed through npm, which is included with [Node.js](https://nodejs.org/). A project-local installation is recommended because it pins the checker version for the project:
+
+```bash
+# Only needed when the project does not have a package.json yet.
+npm init -y
+npm install --save-dev typescript
+
+# Confirm that the local compiler works.
+npx tsc --version
+```
+
+Configure Vue-Script to use the local compiler:
+
+```toml
+[check]
+target = "es2022"
+typescript = "node_modules/.bin/tsc"
+```
+
+Alternatively, omit `[check].typescript` and install `tsc` once for the whole machine:
+
+```bash
+npm install --global typescript
+tsc --version
+```
+
+See the official [TypeScript installation guide](https://www.typescriptlang.org/download/) for other package managers and platforms.
+
+Diagnostics default to the normal human-readable format. Tools can request a JSON array instead:
+
+```bash
+vue-script check --message-format json
+```
+
+Each JSON diagnostic contains a level, message, optional TypeScript error code, optional source span, and optional help note. Lines and columns in JSON output are one-indexed. TypeScript diagnostics from the assembled module are mapped back to the originating `.vue` or `.vue.js` source lines.
+
 Build and open the configured target file:
 
 ```bash

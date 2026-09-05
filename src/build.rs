@@ -12,6 +12,92 @@ pub struct BuildError;
 
 pub type BuildResult = Result<(), BuildError>;
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct LineMapping {
+	pub generated_line_start: usize,
+	pub generated_line_end: usize,
+	pub source_file: String,
+	pub source_line_start: usize,
+	pub source_column_offset: usize,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct MappedJavaScript {
+	pub source: String,
+	pub mappings: Vec<LineMapping>,
+}
+
+impl MappedJavaScript {
+	pub fn map_line(&self, generated_line: usize) -> Option<(&str, usize)> {
+		let mapping = self.mappings.iter().find(|mapping| {
+			generated_line >= mapping.generated_line_start && generated_line <= mapping.generated_line_end
+		})?;
+		let source_line = mapping.source_line_start + generated_line - mapping.generated_line_start;
+		Some((&mapping.source_file, source_line))
+	}
+
+	pub fn map_position(&self, generated_line: usize, generated_column: usize) -> Option<(&str, usize, usize)> {
+		let mapping = self.mappings.iter().find(|mapping| {
+			generated_line >= mapping.generated_line_start && generated_line <= mapping.generated_line_end
+		})?;
+		let source_line = mapping.source_line_start + generated_line - mapping.generated_line_start;
+		Some((&mapping.source_file, source_line, generated_column + mapping.source_column_offset))
+	}
+}
+
+pub struct Compilation {
+	pub config: Config,
+	pub javascript: MappedJavaScript,
+	pub output: String,
+}
+
+struct MappedJavaScriptWriter {
+	source: String,
+	mappings: Vec<LineMapping>,
+}
+
+impl MappedJavaScriptWriter {
+	fn new() -> MappedJavaScriptWriter {
+		MappedJavaScriptWriter {
+			source: String::new(),
+			mappings: Vec::new(),
+		}
+	}
+
+	fn current_line(&self) -> usize {
+		self.source.bytes().filter(|byte| *byte == b'\n').count() + 1
+	}
+
+	fn push_unmapped(&mut self, source: &str) {
+		self.source.push_str(source);
+	}
+
+	fn push_mapped(&mut self, source: &str, source_file: &str, source_line_start: usize, source_column_offset: usize) {
+		let occupied_lines = source.bytes().filter(|byte| *byte == b'\n').count()
+			+ usize::from(!source.is_empty() && !source.ends_with('\n'));
+		if occupied_lines == 0 {
+			return;
+		}
+
+		let generated_line_start = self.current_line();
+		self.source.push_str(source);
+		self.mappings.push(LineMapping {
+			generated_line_start,
+			generated_line_end: generated_line_start + occupied_lines - 1,
+			source_file: source_file.to_string(),
+			source_line_start,
+			source_column_offset,
+		});
+	}
+
+	fn finish(self) -> MappedJavaScript {
+		MappedJavaScript {
+			source: self.source,
+			mappings: self.mappings,
+		}
+	}
+}
+
 fn log_span<'a>(file: &'a str, source: &str, span: tagsoup::SourceSpan) -> log::LineSpan<'a> {
 	let resolved = span.resolve(source).unwrap();
 	let line_start = resolved.start_line as usize;
@@ -130,7 +216,7 @@ fn validate_components(log: &mut log::Logger, components: &[Component]) {
 	}
 }
 
-fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Component]) -> String {
+fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Component]) -> MappedJavaScript {
 	// Topologically sort components based on used dependencies.
 	// import statements are external module imports and are emitted before all script bodies.
 	fn visit<'a>(
@@ -203,13 +289,31 @@ fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Componen
 	let mut ordered_components = Vec::new();
 	visit(log, &config.app.main, None, &collection, &mut visiting, &mut visited, &mut ordered_components);
 
-	let mut ordered_imports: Vec<_> = ordered_components.iter().flat_map(|component| component.imports.iter().map(String::as_str)).collect();
-	ordered_imports.sort();
-	ordered_imports.dedup();
+	let mut ordered_imports: Vec<_> = ordered_components.iter()
+		.flat_map(|component| component.imports.iter().map(move |import| (*component, import)))
+		.collect();
+	ordered_imports.sort_by(|left, right| left.1.text.cmp(&right.1.text));
+	ordered_imports.dedup_by(|left, right| left.1.text == right.1.text);
 
-	let ordered_scripts: Vec<_> = ordered_components.iter().filter_map(|component| component.script.as_deref()).collect();
+	let mut writer = MappedJavaScriptWriter::new();
+	for (component, import) in ordered_imports {
+		writer.push_mapped(&import.text, &component.path, import.source_line, import.source_column_offset);
+	}
+	writer.push_unmapped("\n");
 
-	format!("<script type=\"module\">\n{}\n{}\n</script>", ordered_imports.join(""), ordered_scripts.join("\n"))
+	let mut first_script = true;
+	for component in ordered_components {
+		let (Some(script), Some(source_line)) = (component.script.as_deref(), component.script_source_line) else {
+			continue;
+		};
+		if !first_script {
+			writer.push_unmapped("\n");
+		}
+		first_script = false;
+		writer.push_mapped(script, &component.path, source_line, 0);
+	}
+
+	writer.finish()
 }
 
 fn collect_components(log: &mut log::Logger, project_path: &Path, main_component_path: &str) -> Vec<Component> {
@@ -240,9 +344,9 @@ fn collect_components(log: &mut log::Logger, project_path: &Path, main_component
 	components
 }
 
-pub fn main(log: &mut log::Logger) -> BuildResult {
+pub fn compile(log: &mut log::Logger) -> Result<Compilation, BuildError> {
 	log.reset();
-	let ref config = match Config::load(log) {
+	let config = match Config::load(log) {
 		Ok(config) => config,
 		Err(err) => {
 			log.log(None, log::LogEntry {
@@ -259,41 +363,16 @@ pub fn main(log: &mut log::Logger) -> BuildResult {
 	let components = collect_components(log, project_path, &config.app.main);
 	validate_components(log, &components);
 
-	let scripts = render_scripts(log, config, &components);
+	let javascript = render_scripts(log, &config, &components);
+	let scripts = format!("<script type=\"module\">\n{}\n</script>", javascript.source);
 	let styles = render_styles(&components);
 	let templates = render_templates(&components);
 
-	match fs::read_to_string(&project_path.join(&config.app.page)) {
+	let output = match fs::read_to_string(&project_path.join(&config.app.page)) {
 		Ok(source) => {
 			let source = replace(log, &config.app.page, &source, "<!-- SCRIPTS -->", &scripts);
 			let source = replace(log, &config.app.page, &source, "<!-- STYLES -->", &styles);
-			let source = replace(log, &config.app.page, &source, "<!-- TEMPLATES -->", &templates);
-
-			if !log.has_errors() {
-				if let Some(target_path) = &config.target.path {
-					let target_full_path = project_path.join(target_path);
-					match fs::write(&target_full_path, &source) {
-						Ok(()) => log.log(None, log::LogEntry {
-							level: log::LogLevel::Info,
-							span: None,
-							message: format!("Wrote \"{}\".", target_full_path.display()),
-							note: None,
-						}),
-						Err(err) => {
-							log.log(None, log::LogEntry {
-								level: log::LogLevel::Error,
-								span: None,
-								message: format!("Failed to write \"{}\": {}", target_full_path.display(), err),
-								note: Some("Check that the target path exists and is writable."),
-							});
-							return Err(BuildError);
-						},
-					}
-				}
-				else {
-					println!("{}", source);
-				}
-			}
+			replace(log, &config.app.page, &source, "<!-- TEMPLATES -->", &templates)
 		},
 		Err(err) => {
 			log.log(None, log::LogEntry {
@@ -304,6 +383,40 @@ pub fn main(log: &mut log::Logger) -> BuildResult {
 			});
 			return Err(BuildError);
 		}
+	};
+
+	Ok(Compilation { config, javascript, output })
+}
+
+pub fn main(log: &mut log::Logger) -> BuildResult {
+	let compilation = compile(log)?;
+	if log.has_errors() {
+		return Err(BuildError);
+	}
+
+	let project_path = compilation.config.path.parent().unwrap();
+	if let Some(target_path) = &compilation.config.target.path {
+		let target_full_path = project_path.join(target_path);
+		match fs::write(&target_full_path, &compilation.output) {
+			Ok(()) => log.log(None, log::LogEntry {
+				level: log::LogLevel::Info,
+				span: None,
+				message: format!("Wrote \"{}\".", target_full_path.display()),
+				note: None,
+			}),
+			Err(err) => {
+				log.log(None, log::LogEntry {
+					level: log::LogLevel::Error,
+					span: None,
+					message: format!("Failed to write \"{}\": {}", target_full_path.display(), err),
+					note: Some("Check that the target path exists and is writable."),
+				});
+				return Err(BuildError);
+			},
+		}
+	}
+	else {
+		println!("{}", compilation.output);
 	}
 
 	if log.has_errors() { Err(BuildError) } else { Ok(()) }

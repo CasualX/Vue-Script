@@ -52,6 +52,10 @@ path = "path/to/output.html"
 
 Paths in `vue-script.toml` are relative to the project root, which is the directory that contains `vue-script.toml`.
 
+The `check` command requires an explicit TypeScript compilation target in `[check].target`, such as `"es2020"`, `"es2022"`, or `"esnext"`.
+It uses `tsc` on `PATH` unless `[check].typescript` selects a compiler.
+An absolute compiler path is used as-is; a relative one is resolved from the directory containing `vue-script.toml`.
+
 `[target].path` is optional. If it is omitted, the builder prints the assembled HTML to stdout instead of writing a file.
 
 ## Vue Runtime Integration

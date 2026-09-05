@@ -5,5 +5,8 @@ main = "app/main.vue"
 [target]
 path = "target/index.html"
 
+[check]
+target = "es2022"
+
 [serve]
 watch = "app/**/*"

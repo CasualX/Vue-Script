@@ -2,7 +2,7 @@
 <link rel="component" href="example-app/entry-table.vue">
 
 <script>
-const ExampleApp = {
+const ExampleApp = Vue.defineComponent({
 	template: '#example-app',
 	components: {
 		CounterPanel,
@@ -34,7 +34,7 @@ const ExampleApp = {
 			});
 		},
 	},
-};
+});
 </script>
 
 <template id="example-app">

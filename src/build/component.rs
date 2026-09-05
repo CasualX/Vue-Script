@@ -22,6 +22,13 @@ pub struct Link {
 	pub dynamic: bool,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ScriptImport {
+	pub text: String,
+	pub source_line: usize,
+	pub source_column_offset: usize,
+}
+
 fn outer_html<'a>(source: &'a str, span: tagsoup::SourceSpan) -> &'a str {
 	&source[span.start as usize..span.end as usize]
 }
@@ -31,11 +38,12 @@ pub struct Component {
 	pub path: String,
 	pub source: String,
 	pub links: Vec<Link>,
-	pub imports: Vec<String>,
+	pub imports: Vec<ScriptImport>,
 	pub custom_tag: Option<String>,
 	pub used_custom_tags: Vec<UsedCustomTag>,
 	pub template: Option<String>,
 	pub script: Option<String>,
+	pub script_source_line: Option<usize>,
 	pub style: Option<String>,
 }
 
@@ -67,7 +75,7 @@ impl Component {
 }
 
 fn parse_component_js(component_path: &str, source: &str) -> Option<Component> {
-	let (imports, script) = js::get_imports(source);
+	let (imports, script) = js::get_imports(source, 1);
 	Some(Component {
 		path: component_path.to_string(),
 		source: source.to_string(),
@@ -77,6 +85,7 @@ fn parse_component_js(component_path: &str, source: &str) -> Option<Component> {
 		used_custom_tags: Vec::new(),
 		template: None,
 		script: Some(script),
+		script_source_line: Some(1),
 		style: None,
 	})
 }
@@ -91,6 +100,7 @@ fn parse_component_css(component_path: &str, source: &str) -> Option<Component> 
 		used_custom_tags: Vec::new(),
 		template: None,
 		script: None,
+		script_source_line: None,
 		style: Some(source.to_string()),
 	})
 }

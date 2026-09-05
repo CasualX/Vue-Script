@@ -1,5 +1,5 @@
 <script>
-const EntryTable = {
+const EntryTable = Vue.defineComponent({
 	template: '#entry-table',
 	data() {
 		return {
@@ -29,7 +29,7 @@ const EntryTable = {
 			this.role = '';
 		},
 	},
-};
+});
 </script>
 
 <template id="entry-table">

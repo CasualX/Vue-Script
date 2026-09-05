@@ -1,4 +1,5 @@
 mod build;
+mod check;
 mod config;
 mod open;
 mod serve;
@@ -13,6 +14,16 @@ fn main() {
 		.about("Vue Single File Components without the insanity that comes with the NPM ecosystem")
 		.subcommand(clap::Command::new("build")
 			.about("Compiles the Vue Single File Components for distribution")
+		)
+		.subcommand(clap::Command::new("check")
+			.about("Checks the project without writing the generated HTML")
+			.arg(clap::Arg::new("message-format")
+				.long("message-format")
+				.value_name("FORMAT")
+				.value_parser(["human", "json"])
+				.default_value("human")
+				.help("Select human-readable or JSON diagnostics")
+			)
 		)
 		.subcommand(clap::Command::new("open")
 			.about("Opens the HTML file in a local browser")
@@ -37,6 +48,15 @@ fn main() {
 		Some(("build", _matches)) => {
 			let mut log = log::Logger::new();
 			let _ = build::main(&mut log);
+			log.finished()
+		},
+		Some(("check", matches)) => {
+			let format = match matches.get_one::<String>("message-format").map(String::as_str) {
+				Some("json") => log::MessageFormat::Json,
+				_ => log::MessageFormat::Human,
+			};
+			let mut log = log::Logger::with_format(format);
+			let _ = check::main(&mut log);
 			log.finished()
 		},
 		Some(("open", _matches)) => {

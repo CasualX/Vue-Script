@@ -106,6 +106,7 @@ pub fn parse(log: &mut log::Logger, component_path: &str, source: &str) -> Optio
 	let mut custom_tag = None;
 	let mut used_custom_tags = Vec::new();
 	let mut script = None;
+	let mut script_source_line = None;
 	let mut template = None;
 	let mut style = None;
 
@@ -167,9 +168,13 @@ pub fn parse(log: &mut log::Logger, component_path: &str, source: &str) -> Optio
 					}
 					else {
 						let script_contents = el.text_content();
-						let (script_imports, script_contents) = js::get_imports(&script_contents);
+						let content_line = el.children.first()
+							.and_then(|node| node.span().resolve(source))
+							.map_or(1, |span| span.start_line as usize);
+						let (script_imports, script_contents) = js::get_imports(&script_contents, content_line);
 						imports = script_imports;
 						script = Some(script_contents);
+						script_source_line = Some(content_line);
 					}
 				}
 				else if el.tag.eq_ignore_ascii_case("STYLE") {
@@ -235,6 +240,7 @@ pub fn parse(log: &mut log::Logger, component_path: &str, source: &str) -> Optio
 		used_custom_tags,
 		template,
 		script,
+		script_source_line,
 		style,
 	})
 }

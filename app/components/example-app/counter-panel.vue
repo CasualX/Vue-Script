@@ -1,11 +1,11 @@
 <script>
-const CounterPanel = {
+const CounterPanel = Vue.defineComponent({
 	template: '#counter-panel',
 	props: {
 		count: Number,
 	},
 	emits: ['decrement', 'increment'],
-};
+});
 </script>
 
 <template id="counter-panel">

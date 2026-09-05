@@ -1,5 +1,9 @@
 use super::*;
 
+fn import_texts(component: &Component) -> Vec<&str> {
+	component.imports.iter().map(|import| import.text.as_str()).collect()
+}
+
 // Keep build fixtures under src/build/tests so they are visible in the repository.
 // Parse-only tests can use include_str!, while filesystem traversal tests should add
 // dedicated fixture files here and resolve them from CARGO_MANIFEST_DIR.
@@ -47,12 +51,13 @@ fn build_reports_cycle_and_missing_import_without_filesystem() {
 		target: crate::config::ConfigTarget {
 			path: None,
 		},
+		check: crate::config::ConfigCheck::default(),
 		serve: crate::config::ConfigServe::default(),
 	};
 	let mut log = crate::log::Logger::new();
 	let output = render_scripts(&mut log, &config, &[main_component, child_component]);
 
-	assert!(!output.is_empty(), "rendered script output should still be produced for inspection");
+	assert!(!output.source.is_empty(), "rendered script output should still be produced for inspection");
 	assert!(!log.finished(), "cycles and missing imports should be reported as errors");
 }
 
@@ -81,7 +86,7 @@ fn parses_valid_vue_fragment() {
 	assert_eq!(component.links[0].href, "src/build/tests/components/child.vue");
 	assert_eq!(component.links[0].rel, component::Relationship::Component);
 	assert!(!component.links[0].dynamic);
-	assert_eq!(component.imports, vec!["import { createApp } from 'vue';\n"]);
+	assert_eq!(import_texts(&component), vec!["import { createApp } from 'vue';\n"]);
 	assert_eq!(component.custom_tag, None);
 	assert!(component.script.as_deref().unwrap().contains("console.log"));
 	assert!(!component.script.as_deref().unwrap().contains("import { createApp } from 'vue';"));
@@ -188,7 +193,7 @@ fn allows_top_level_comments_and_whitespace() {
 	).unwrap();
 
 	assert_eq!(component.links.iter().map(|link| link.href.as_str()).collect::<Vec<_>>(), vec!["src/build/tests/components/child.vue"]);
-	assert_eq!(component.imports, vec!["import helper from './helper.js';\n"]);
+	assert_eq!(import_texts(&component), vec!["import helper from './helper.js';\n"]);
 	assert!(component.script.as_deref().unwrap().contains("console.log(helper);"));
 	assert_eq!(component.template.as_deref(), Some("<template><div>Hello</div></template>"));
 	assert!(component.style.as_deref().unwrap().contains("div { color: red; }"));
@@ -240,7 +245,7 @@ fn extracts_multiple_import_lines_from_script_contents() {
 	).unwrap();
 
 	assert_eq!(component.links.iter().map(|link| link.href.as_str()).collect::<Vec<_>>(), vec!["src/build/tests/components/child.vue", "src/build/tests/components/sibling.vue"]);
-	assert_eq!(component.imports, vec!["import { createApp } from 'vue';\n", "import helper from './helper.js';\n"]);
+	assert_eq!(import_texts(&component), vec!["import { createApp } from 'vue';\n", "import helper from './helper.js';\n"]);
 	assert_eq!(component.script.as_deref().unwrap().trim(), "console.log(\"ok\");");
 }
 
@@ -282,7 +287,7 @@ fn extracts_import_lines_from_vue_js_helpers() {
 		include_str!("tests/extracts_import_lines_from_vue_js_helpers.vue.js"),
 	).unwrap();
 
-	assert_eq!(component.imports, vec!["import helper from './helper.js';\n"]);
+	assert_eq!(import_texts(&component), vec!["import helper from './helper.js';\n"]);
 	assert_eq!(component.script.as_deref().unwrap().trim(), "const answer = 42;");
 }
 
@@ -294,7 +299,7 @@ fn ignores_non_statement_import_prefixes() {
 		include_str!("tests/ignores_non_statement_import_prefixes.vue.js"),
 	).unwrap();
 
-	assert_eq!(component.imports, vec!["import{ named } from './helper.js';\n"]);
+	assert_eq!(import_texts(&component), vec!["import{ named } from './helper.js';\n"]);
 	assert!(component.script.as_deref().unwrap().contains("importedAt = Date.now();"));
 	assert!(component.script.as_deref().unwrap().contains("import.meta.env;"));
 	assert!(component.script.as_deref().unwrap().contains("const value = import('helper');"));
@@ -342,6 +347,7 @@ fn renders_styles_in_single_tag() {
 			used_custom_tags: Vec::new(),
 			template: None,
 			script: None,
+			script_source_line: None,
 			style: Some(".one { color: red; }".to_string()),
 		},
 		Component {
@@ -353,6 +359,7 @@ fn renders_styles_in_single_tag() {
 			used_custom_tags: Vec::new(),
 			template: None,
 			script: None,
+			script_source_line: None,
 			style: Some(".two { color: blue; }".to_string()),
 		},
 	];
@@ -361,4 +368,32 @@ fn renders_styles_in_single_tag() {
 		render_styles(&components),
 		"<style>\n.one { color: red; }\n.two { color: blue; }\n</style>"
 	);
+}
+
+#[test]
+fn maps_hoisted_imports_and_script_lines_to_vue_source() {
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
+		"app/mapped.vue",
+		"<script>\n\timport value from './value.js';\n\nconst broken = value;\n</script>\n<div id=\"mapped\"></div>\n",
+	).unwrap();
+	let config = crate::Config {
+		path: std::path::PathBuf::from("vue-script.toml"),
+		app: crate::config::ConfigApp {
+			page: "app/page.html".to_string(),
+			main: "app/mapped.vue".to_string(),
+		},
+		target: crate::config::ConfigTarget { path: None },
+		check: crate::config::ConfigCheck::default(),
+		serve: crate::config::ConfigServe::default(),
+	};
+
+	let javascript = render_scripts(&mut log, &config, &[component]);
+	let import_line = javascript.source.lines().position(|line| line.contains("import value")).unwrap() + 1;
+	let script_line = javascript.source.lines().position(|line| line.contains("const broken")).unwrap() + 1;
+
+	assert_eq!(javascript.map_line(import_line), Some(("app/mapped.vue", 2)));
+	assert_eq!(javascript.map_position(import_line, 8), Some(("app/mapped.vue", 2, 9)));
+	assert_eq!(javascript.map_line(script_line), Some(("app/mapped.vue", 4)));
+	assert_eq!(javascript.map_position(script_line, 7), Some(("app/mapped.vue", 4, 7)));
 }
