@@ -197,6 +197,7 @@ Behavior:
 - Paths are resolved relative to the current component's directory.
 - Dependencies are traversed recursively from `app.main`.
 - Dependency scripts are emitted before the component that depends on them.
+- Vue-Script treats every `<component is="...">` value as opaque. Add the boolean `dynamic` attribute to each link that the outlet can select. This marks only that link as used and leaves unused-import warnings enabled for all other links.
 - A parent file declares component links for its children and helpers; a child component does not depend on itself.
 - Declare every child component or helper that the current file depends on.
 - Write dependency links as `<link rel="component" href="...">`.
@@ -208,6 +209,17 @@ Use component links for:
 - Shared `.vue.css` styles.
 
 Keep the dependency graph acyclic. The builder orders scripts by walking dependencies first.
+
+For example, a route outlet backed by a table of component objects can declare its possible dynamic dependencies explicitly:
+
+```html
+<link rel="component" href="pages/home-page.vue" dynamic>
+<link rel="component" href="pages/settings-page.vue" dynamic>
+
+<template id="route-outlet">
+	<component :is="activeRoute.component"></component>
+</template>
+```
 
 ### `import` lines in script source
 

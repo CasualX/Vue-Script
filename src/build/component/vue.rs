@@ -18,7 +18,7 @@ fn join_component_path(base_path: &str, relative_path: &str) -> Option<String> {
 	Some(parts.join("/"))
 }
 
-fn parse_component_link(log: &mut log::Logger, component_path: &str, source: &str, component_base_path: &str, element: &tagsoup::Element) -> Option<String> {
+fn parse_component_link(log: &mut log::Logger, component_path: &str, source: &str, component_base_path: &str, element: &tagsoup::Element) -> Option<Link> {
 	let Some(rel_attr) = element.get_attribute("rel") else {
 		log.log(Some(source), log::LogEntry {
 			level: log::LogLevel::Error,
@@ -38,16 +38,18 @@ fn parse_component_link(log: &mut log::Logger, component_path: &str, source: &st
 		return None;
 	};
 
-	let rel = rel_value.value_raw();
-	if rel != "component" {
-		log.log(Some(source), log::LogEntry {
-			level: log::LogLevel::Error,
-			span: Some(log_span(component_path, source, rel_value.span)),
-			message: format!("Top-level <link> in component \"{component_path}\" must use rel=\"component\"."),
-			note: Some("Remove the link or change it to <link rel=\"component\" href=\"...\">."),
-		});
-		return None;
-	}
+	let rel = match rel_value.value_raw() {
+		"component" => Relationship::Component,
+		_ => {
+			log.log(Some(source), log::LogEntry {
+				level: log::LogLevel::Error,
+				span: Some(log_span(component_path, source, rel_value.span)),
+				message: format!("Top-level <link> in component \"{component_path}\" must use rel=\"component\"."),
+				note: Some("Remove the link or change it to <link rel=\"component\" href=\"...\">."),
+			});
+			return None;
+		},
+	};
 
 	let Some(href_attr) = element.get_attribute("href") else {
 		log.log(Some(source), log::LogEntry {
@@ -79,7 +81,8 @@ fn parse_component_link(log: &mut log::Logger, component_path: &str, source: &st
 		return None;
 	};
 
-	Some(href)
+	let dynamic = element.get_attribute("dynamic").is_some();
+	Some(Link { href, rel, dynamic })
 }
 
 fn collect_used_custom_tags(element: &tagsoup::Element, used: &mut HashMap<String, tagsoup::SourceSpan>) {
@@ -149,8 +152,8 @@ pub fn parse(log: &mut log::Logger, component_path: &str, source: &str) -> Optio
 			tagsoup::Node::Comment(_) => (),
 			tagsoup::Node::Element(el) => {
 				if el.tag.eq_ignore_ascii_case("LINK") {
-					if let Some(href) = parse_component_link(log, component_path, source, component_base_path, el) {
-						links.push(href);
+					if let Some(link) = parse_component_link(log, component_path, source, component_base_path, el) {
+						links.push(link);
 					}
 				}
 				else if el.tag.eq_ignore_ascii_case("SCRIPT") {

@@ -5,7 +5,7 @@ use std::path::Path;
 use super::*;
 
 mod component;
-use component::Component;
+use component::*;
 
 #[derive(Debug)]
 pub struct BuildError;
@@ -96,23 +96,23 @@ fn validate_components(log: &mut log::Logger, components: &[Component]) {
 	let collection: HashMap<&str, &Component> = components.iter().map(|component| (component.path.as_str(), component)).collect();
 
 	for component in components {
-		let direct_imports: HashMap<&str, &Component> = component.links.iter()
-			.filter_map(|path| collection.get(path.as_str()).copied())
-			.filter_map(|imported| imported.custom_tag.as_deref().map(|tag| (tag, imported)))
+		let direct_imports: HashMap<&str, (&Component, &Link)> = component.component_links()
+			.filter_map(|link| collection.get(link.href.as_str()).copied().map(|imported| (link, imported)))
+			.filter_map(|(link, imported)| imported.custom_tag.as_deref().map(|tag| (tag, (imported, link))))
 			.collect();
 		let used_tags: HashSet<&str> = component.used_custom_tags.iter().map(|used| used.tag.as_str()).collect();
 
-		for imported in direct_imports.values() {
+		for (imported, link) in direct_imports.values().copied() {
 			let Some(custom_tag) = imported.custom_tag.as_deref() else {
 				continue;
 			};
 
-			if !used_tags.contains(custom_tag) {
+			if !used_tags.contains(custom_tag) && !link.dynamic {
 				log.log(Some(component.source.as_str()), log::LogEntry {
 					level: log::LogLevel::Warn,
 					span: None,
 					message: format!("Component \"{}\" imports \"{}\" but never uses <{}>.", component.path, imported.path, custom_tag),
-					note: Some("Remove the unused link import or add the matching custom element to the template."),
+					note: Some("Remove the unused link import, add the matching custom element, or mark a dynamically referenced import with the dynamic attribute."),
 				});
 			}
 		}
@@ -189,8 +189,8 @@ fn render_scripts(log: &mut log::Logger, config: &Config, components: &[Componen
 		}
 
 		visiting.insert(component.path.as_str());
-		for used_path in &component.links {
-			visit(log, used_path, Some(component), collection, visiting, visited, ordered_components);
+		for link in component.component_links() {
+			visit(log, &link.href, Some(component), collection, visiting, visited, ordered_components);
 		}
 		visiting.remove(component.path.as_str());
 		visited.insert(component.path.as_str());
@@ -230,8 +230,8 @@ fn collect_components(log: &mut log::Logger, project_path: &Path, main_component
 			None => continue,
 		};
 
-		for import in &component.links {
-			to_visit.insert(import.clone());
+		for link in component.component_links() {
+			to_visit.insert(link.href.clone());
 		}
 
 		components.push(component);

@@ -77,7 +77,10 @@ fn parses_valid_vue_fragment() {
 	).unwrap();
 
 	assert_eq!(component.path, "src/build/tests/parses_valid_vue_fragment.vue");
-	assert_eq!(component.links, vec!["src/build/tests/components/child.vue"]);
+	assert_eq!(component.links.len(), 1);
+	assert_eq!(component.links[0].href, "src/build/tests/components/child.vue");
+	assert_eq!(component.links[0].rel, component::Relationship::Component);
+	assert!(!component.links[0].dynamic);
 	assert_eq!(component.imports, vec!["import { createApp } from 'vue';\n"]);
 	assert_eq!(component.custom_tag, None);
 	assert!(component.script.as_deref().unwrap().contains("console.log"));
@@ -130,6 +133,53 @@ fn validates_direct_component_import_usage() {
 }
 
 #[test]
+fn treats_dynamic_component_is_values_as_opaque() {
+	let mut log = crate::log::Logger::new();
+	let main_component = Component::parse(&mut log,
+		"src/build/tests/dynamic_main.vue",
+		"<link rel=\"component\" href=\"static-child.vue\">\n<link rel=\"component\" href=\"bound-child.vue\">\n<div id=\"dynamic-main\">\n\t<component is=\"static-child\"></component>\n\t<component :is=\"'bound-child'\"></component>\n</div>\n",
+	).unwrap();
+	let static_child = Component::parse(&mut log,
+		"src/build/tests/static-child.vue",
+		"<div id=\"static-child\"></div>\n",
+	).unwrap();
+	let bound_child = Component::parse(&mut log,
+		"src/build/tests/bound-child.vue",
+		"<div id=\"bound-child\"></div>\n",
+	).unwrap();
+
+	validate_components(&mut log, &[main_component, static_child, bound_child]);
+
+	assert_eq!(log.error_count(), 0);
+	assert_eq!(log.warning_count(), 2);
+}
+
+#[test]
+fn allows_explicit_dynamic_imports_without_hiding_other_unused_imports() {
+	let mut log = crate::log::Logger::new();
+	let main_component = Component::parse(&mut log,
+		"src/build/tests/dynamic_main.vue",
+		"<link rel=\"component\" href=\"dynamic-child.vue\" dynamic>\n<link rel=\"component\" href=\"unused-child.vue\">\n<div id=\"dynamic-main\">\n\t<component :is=\"activeRoute.component\"></component>\n</div>\n",
+	).unwrap();
+	let dynamic_child = Component::parse(&mut log,
+		"src/build/tests/dynamic-child.vue",
+		"<div id=\"dynamic-child\"></div>\n",
+	).unwrap();
+	let unused_child = Component::parse(&mut log,
+		"src/build/tests/unused-child.vue",
+		"<div id=\"unused-child\"></div>\n",
+	).unwrap();
+
+	assert_eq!(main_component.links[0].href, "src/build/tests/dynamic-child.vue");
+	assert!(main_component.links[0].dynamic);
+	assert!(!main_component.links[1].dynamic);
+	validate_components(&mut log, &[main_component, dynamic_child, unused_child]);
+
+	assert_eq!(log.error_count(), 0);
+	assert_eq!(log.warning_count(), 1);
+}
+
+#[test]
 fn allows_top_level_comments_and_whitespace() {
 	let mut log = crate::log::Logger::new();
 	let component = Component::parse(&mut log,
@@ -137,7 +187,7 @@ fn allows_top_level_comments_and_whitespace() {
 		"\n<!-- leading comment -->\n<link rel=\"component\" href=\"components/child.vue\">\n<!-- between blocks -->\n<script>\nimport helper from './helper.js';\nconsole.log(helper);\n</script>\n\n<template><div>Hello</div></template>\n<!-- trailing comment -->\n<style>\ndiv { color: red; }\n</style>\n",
 	).unwrap();
 
-	assert_eq!(component.links, vec!["src/build/tests/components/child.vue"]);
+	assert_eq!(component.links.iter().map(|link| link.href.as_str()).collect::<Vec<_>>(), vec!["src/build/tests/components/child.vue"]);
 	assert_eq!(component.imports, vec!["import helper from './helper.js';\n"]);
 	assert!(component.script.as_deref().unwrap().contains("console.log(helper);"));
 	assert_eq!(component.template.as_deref(), Some("<template><div>Hello</div></template>"));
@@ -178,7 +228,7 @@ fn normalizes_component_use_paths() {
 		include_str!("tests/normalizes_component_use_paths.vue"),
 	).unwrap();
 
-	assert_eq!(component.links, vec!["src/build/child.vue"]);
+	assert_eq!(component.links.iter().map(|link| link.href.as_str()).collect::<Vec<_>>(), vec!["src/build/child.vue"]);
 }
 
 #[test]
@@ -189,7 +239,7 @@ fn extracts_multiple_import_lines_from_script_contents() {
 		include_str!("tests/extracts_multiple_import_lines_from_script_contents.vue"),
 	).unwrap();
 
-	assert_eq!(component.links, vec!["src/build/tests/components/child.vue", "src/build/tests/components/sibling.vue"]);
+	assert_eq!(component.links.iter().map(|link| link.href.as_str()).collect::<Vec<_>>(), vec!["src/build/tests/components/child.vue", "src/build/tests/components/sibling.vue"]);
 	assert_eq!(component.imports, vec!["import { createApp } from 'vue';\n", "import helper from './helper.js';\n"]);
 	assert_eq!(component.script.as_deref().unwrap().trim(), "console.log(\"ok\");");
 }

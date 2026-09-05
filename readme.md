@@ -63,6 +63,26 @@ The project configuration file `vue-script.toml` is also watched implicitly so c
 
 Vue-Script `.vue` files are HTML fragments with zero or more top-level `<link rel="component" href="...">` elements, an optional `<script>`, an optional `<template>` or `<div>`, and an optional `<style>`. Put one component link at the top level for each child component or helper file dependency.
 
+Vue-Script treats every `is` value as opaque. When using `<component :is="...">`, mark each corresponding link as dynamic:
+
+```html
+<link rel="component" href="pages/home-page.vue" dynamic>
+<link rel="component" href="pages/account-page.vue" dynamic>
+
+<script>
+const routes = [
+	{ path: '/', component: HomePage },
+	{ path: '/account', component: AccountPage },
+];
+</script>
+
+<template id="route-outlet">
+	<component :is="activeRoute.component"></component>
+</template>
+```
+
+The `dynamic` attribute suppresses the unused-component warning only for the link on which it appears. Other unused component links continue to produce warnings.
+
 JavaScript module imports should be written as normal `import ...;` lines inside the `<script>` block or a `.vue.js` helper file. Vue-Script collects lines that start with `import` after trimming leading whitespace and emits them before the remaining script bodies in the final module script.
 Module specifiers are preserved verbatim, so relative imports are resolved by the browser relative to the generated target HTML. This is intended for JavaScript modules placed alongside the target and its other vendored static resources, not relative to the source `.vue` file.
 

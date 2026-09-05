@@ -10,6 +10,18 @@ pub struct UsedCustomTag {
 	pub span: tagsoup::SourceSpan,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Relationship {
+	Component,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Link {
+	pub href: String,
+	pub rel: Relationship,
+	pub dynamic: bool,
+}
+
 fn outer_html<'a>(source: &'a str, span: tagsoup::SourceSpan) -> &'a str {
 	&source[span.start as usize..span.end as usize]
 }
@@ -18,7 +30,7 @@ fn outer_html<'a>(source: &'a str, span: tagsoup::SourceSpan) -> &'a str {
 pub struct Component {
 	pub path: String,
 	pub source: String,
-	pub links: Vec<String>,
+	pub links: Vec<Link>,
 	pub imports: Vec<String>,
 	pub custom_tag: Option<String>,
 	pub used_custom_tags: Vec<UsedCustomTag>,
@@ -28,6 +40,10 @@ pub struct Component {
 }
 
 impl Component {
+	pub fn component_links(&self) -> impl Iterator<Item = &Link> {
+		self.links.iter().filter(|link| link.rel == Relationship::Component)
+	}
+
 	pub fn parse(log: &mut log::Logger, path: &str, text: &str) -> Option<Component> {
 		if path.ends_with(".vue") {
 			vue::parse(log, path, text)
