@@ -1,5 +1,9 @@
 # Vue Script
 
+[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![crates.io](https://img.shields.io/crates/v/vue-script.svg)](https://crates.io/crates/vue-script)
+[![Build status](https://github.com/CasualX/Vue-Script/actions/workflows/check.yml/badge.svg)](https://github.com/CasualX/Vue-Script/actions/workflows/check.yml)
+
 Vue 3 Bespoke Single File Components without the insanity that comes with the NPM ecosystem.
 
 Vue Script is a small build tool for global-runtime Vue single file components. The bundled example uses Vue 3 loaded from the page HTML, while the builder itself focuses on assembling templates, dependency-ordered scripts, imports, and styles into one final HTML file.
