@@ -41,6 +41,7 @@ The check command runs Vue-Script's component and HTML-fragment validation, asse
 It requires `[check].target` so the ECMAScript environment is explicit; use a TypeScript target such as `"es2020"`, `"es2022"`, or `"esnext"` that matches the browsers supported by the project.
 It uses `tsc` on `PATH` by default. Set `[check].typescript` to select a specific compiler;
 absolute paths are used as-is and relative paths are resolved from the directory containing `vue-script.toml`.
+Set `[check].no_implicit_any` and `[check].no_implicit_this` to control whether TypeScript reports implicitly inferred `any` and `this` types. They default to `false` and `true`, respectively.
 TypeScript is an optional development dependency and is not used by `build` or required by the browser runtime.
 
 Vue-Script injects a small checker-only declaration for the global-runtime `Vue` object. Wrap Options API component objects in `Vue.defineComponent({ ... })` to infer data, prop, computed, and method properties on `this` and validate `$emit` event names without installing the Vue type package. The declaration intentionally models only this lightweight subset; event payloads and other Vue global APIs remain dynamically typed, and implicit function parameter types are allowed for ordinary JavaScript.
@@ -62,6 +63,8 @@ Configure Vue-Script to use the local compiler:
 [check]
 target = "es2022"
 typescript = "node_modules/.bin/tsc"
+no_implicit_any = false
+no_implicit_this = true
 ```
 
 Alternatively, omit `[check].typescript` and install `tsc` once for the whole machine:

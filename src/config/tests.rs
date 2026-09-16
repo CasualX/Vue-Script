@@ -18,11 +18,38 @@ fn parses_check_options() {
 		[check]
 		typescript = "tools/tsc"
 		target = "es2022"
+		no_implicit_any = true
+		no_implicit_this = false
 	"#;
 	let config = parse_contents(&mut log, PathBuf::from("vue-script.toml"), &deindent(CONFIG)).expect("config should parse");
 
 	assert_eq!(config.check.typescript.as_deref(), Some("tools/tsc"));
 	assert_eq!(config.check.target.as_deref(), Some("es2022"));
+	assert!(config.check.no_implicit_any);
+	assert!(!config.check.no_implicit_this);
+}
+
+#[test]
+fn check_options_preserve_default_strictness() {
+	let check = ConfigCheck::default();
+	assert!(!check.no_implicit_any);
+	assert!(check.no_implicit_this);
+}
+
+#[test]
+fn rejects_invalid_check_booleans() {
+	let mut log = crate::log::Logger::new();
+	const CONFIG: &str = r#"
+		[check]
+		no_implicit_any = sometimes
+	"#;
+	let err = match parse_contents(&mut log, PathBuf::from("vue-script.toml"), &deindent(CONFIG)) {
+		Ok(_) => panic!("invalid check boolean should fail"),
+		Err(err) => err,
+	};
+
+	assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+	assert!(log.has_errors());
 }
 
 #[test]

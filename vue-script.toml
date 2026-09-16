@@ -8,6 +8,8 @@ path = "target/index.html"
 [check]
 target = "es2022"
 typescript = "node_modules/.bin/tsc"
+no_implicit_this = false
+no_implicit_any = true
 
 [serve]
 watch = "app/**/*"

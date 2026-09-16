@@ -20,10 +20,23 @@ pub struct ConfigTarget {
 	pub path: Option<String>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ConfigCheck {
 	pub typescript: Option<String>,
 	pub target: Option<String>,
+	pub no_implicit_any: bool,
+	pub no_implicit_this: bool,
+}
+
+impl Default for ConfigCheck {
+	fn default() -> ConfigCheck {
+		ConfigCheck {
+			typescript: None,
+			target: None,
+			no_implicit_any: false,
+			no_implicit_this: true,
+		}
+	}
 }
 
 #[derive(Clone)]
@@ -145,6 +158,27 @@ fn parse_str(s: &str) -> String {
 	s.trim_matches(|c| c == '"' || c == '\'').to_string()
 }
 
+fn parse_bool(value: &str) -> Option<bool> {
+	match parse_str(value).as_str() {
+		"true" => Some(true),
+		"false" => Some(false),
+		_ => None,
+	}
+}
+
+fn parse_bool_setting(log: &mut log::Logger, section: &str, key: &str, value: &str) -> io::Result<bool> {
+	parse_bool(value).ok_or_else(|| {
+		let message = format!("Invalid boolean value for [{}].{}: {}.", section, key, value);
+		log.log(None, log::LogEntry {
+			level: log::LogLevel::Error,
+			span: None,
+			message: message.clone(),
+			note: Some("Use true or false."),
+		});
+		io::Error::new(io::ErrorKind::InvalidInput, message)
+	})
+}
+
 fn normalize_relative_path(path: &Path) -> Option<String> {
 	let mut components = Vec::new();
 	for component in path.components() {
@@ -209,6 +243,8 @@ fn parse_contents(log: &mut log::Logger, path: PathBuf, contents: &str) -> io::R
 					Some("check") => match key {
 						"typescript" => check.typescript = Some(parse_str(value)),
 						"target" => check.target = Some(parse_str(value)),
+						"no_implicit_any" => check.no_implicit_any = parse_bool_setting(log, "check", key, value)?,
+						"no_implicit_this" => check.no_implicit_this = parse_bool_setting(log, "check", key, value)?,
 						_ => log.log(None, log::LogEntry {
 							level: log::LogLevel::Warn,
 							span: None,
