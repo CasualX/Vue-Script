@@ -26,6 +26,7 @@ const ExampleApp = Vue.defineComponent({
 				this.count -= 1;
 			}
 		},
+		/** @param {{ name: string, role: string }} entry */
 		addEntry(entry) {
 			this.entries.push({
 				id: this.entries.length + 1,
