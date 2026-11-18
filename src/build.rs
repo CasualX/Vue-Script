@@ -204,7 +204,8 @@ fn validate_components(log: &mut log::Logger, components: &[Component]) {
 		}
 
 		for used in &component.used_custom_tags {
-			if !direct_imports.contains_key(used.tag.as_str()) {
+			let tag = used.tag.as_str();
+			if component.custom_tag.as_deref() != Some(tag) && !direct_imports.contains_key(tag) {
 				log.log(Some(component.source.as_str()), log::LogEntry {
 					level: log::LogLevel::Error,
 					span: Some(log_span(component.path.as_str(), component.source.as_str(), used.span)),

@@ -138,6 +138,20 @@ fn validates_direct_component_import_usage() {
 }
 
 #[test]
+fn allows_a_component_to_use_its_own_tag() {
+	let mut log = crate::log::Logger::new();
+	let component = Component::parse(&mut log,
+		"tree-node.vue",
+		"<template id=\"tree-node\"><tree-node v-if=\"child\"></tree-node></template>\n",
+	).unwrap();
+
+	validate_components(&mut log, &[component]);
+
+	assert_eq!(log.error_count(), 0);
+	assert_eq!(log.warning_count(), 0);
+}
+
+#[test]
 fn treats_dynamic_component_is_values_as_opaque() {
 	let mut log = crate::log::Logger::new();
 	let main_component = Component::parse(&mut log,
